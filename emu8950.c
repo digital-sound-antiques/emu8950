@@ -33,8 +33,8 @@
 #define DP_WIDTH (1<<DP_BITS)
 #define DP_BASE_BITS (DP_BITS - PG_BITS)
 
-#define ALIGN(d,SS,SD) (d*(e_int32)(SS/SD))
-#define ALIGN2(d,SS,SD) (d*(e_int32)(SS/SD))
+#define ALIGN(d,SS,SD) (d*(int32_t)(SS/SD))
+#define ALIGN2(d,SS,SD) (d*(int32_t)(SS/SD))
 
 /* Dynamic range */
 #define DB_STEP 0.1875
@@ -101,7 +101,7 @@
 #define EXPAND_BITS_X(x,s,d) (((x)<<((d)-(s)))|((1<<((d)-(s)))-1))
 
 /* Adjust envelope speed which depends on sampling rate. */
-#define rate_adjust(x) (e_uint32)((double)(x)*clk/72/rate + 0.5)        /* +0.5 to round */
+#define rate_adjust(x) (uint32_t)((double)(x)*clk/72/rate + 0.5)        /* +0.5 to round */
 
 #define MOD(x) ch[x]->mod
 #define CAR(x) ch[x]->car
@@ -114,52 +114,52 @@
 #define SLOT_CYM 17
 
 /* Sampling rate */
-static e_uint32 rate;
+static uint32_t rate;
 /* Input clock */
-static e_uint32 clk;
+static uint32_t clk;
 
 /* WaveTable for each envelope amp */
-static e_uint32 fullsintable[PG_WIDTH];
+static uint32_t fullsintable[PG_WIDTH];
 
 /* LFO Table */
-static e_int32 pmtable[2][PM_PG_WIDTH];
-static e_int32 amtable[2][AM_PG_WIDTH];
+static int32_t pmtable[2][PM_PG_WIDTH];
+static int32_t amtable[2][AM_PG_WIDTH];
 
-static e_uint32 pm_dphase;
-static e_int32 lfo_pm;
-static e_uint32 am_dphase;
-static e_int32 lfo_am;
-static e_uint32 whitenoise;
+static uint32_t pm_dphase;
+static int32_t lfo_pm;
+static uint32_t am_dphase;
+static int32_t lfo_am;
+static uint32_t whitenoise;
 
 /* dB to Liner table */
-static e_int32 DB2LIN_TABLE[(DB_MUTE + DB_MUTE) * 2];
+static int32_t DB2LIN_TABLE[(DB_MUTE + DB_MUTE) * 2];
 
 /* Liner to Log curve conversion table (for Attack rate). */
-static e_uint32 AR_ADJUST_TABLE[1 << EG_BITS];
+static uint32_t AR_ADJUST_TABLE[1 << EG_BITS];
 
 /* Definition of envelope mode */
 enum OPL_EG_STATE
 { SETTLE, ATTACK, DECAY, SUSHOLD, SUSTINE, RELEASE, FINISH };
 
 /* Phase incr table for Attack */
-static e_uint32 dphaseARTable[16][16];
+static uint32_t dphaseARTable[16][16];
 /* Phase incr table for Decay and Release */
-static e_uint32 dphaseDRTable[16][16];
+static uint32_t dphaseDRTable[16][16];
 
 /* KSL + TL Table */
-static e_uint32 tllTable[16][8][1 << TL_BITS][4];
-static e_int32 rksTable[2][8][2];
+static uint32_t tllTable[16][8][1 << TL_BITS][4];
+static int32_t rksTable[2][8][2];
 
 /* Phase incr table for PG */
-static e_uint32 dphaseTable[1024][8][16];
+static uint32_t dphaseTable[1024][8][16];
 
 /***************************************************
  
                   Create tables
  
 ****************************************************/
-INLINE static e_int32
-Min (e_int32 i, e_int32 j)
+static inline int32_t
+Min (int32_t i, int32_t j)
 {
   if (i < j)
     return i;
@@ -171,22 +171,22 @@ Min (e_int32 i, e_int32 j)
 static void
 makeAdjustTable (void)
 {
-  e_int32 i;
+  int32_t i;
 
   AR_ADJUST_TABLE[0] = (1 << EG_BITS);
   for (i = 1; i < 1 << EG_BITS; i++)
-    AR_ADJUST_TABLE[i] = (e_uint32) ((double) (1 << EG_BITS) - 1 - (1 << EG_BITS) * log (i) / log (1 << EG_BITS)) >> 1;
+    AR_ADJUST_TABLE[i] = (uint32_t) ((double) (1 << EG_BITS) - 1 - (1 << EG_BITS) * log (i) / log (1 << EG_BITS)) >> 1;
 }
 
 /* Table for dB(0 -- (1<<DB_BITS)) to Liner(0 -- DB2LIN_AMP_WIDTH) */
 static void
 makeDB2LinTable (void)
 {
-  e_int32 i;
+  int32_t i;
 
   for (i = 0; i < DB_MUTE + DB_MUTE; i++)
   {
-    DB2LIN_TABLE[i] = (e_int32) ((double) ((1 << DB2LIN_AMP_BITS) - 1) * pow (10, -(double) i * DB_STEP / 20));
+    DB2LIN_TABLE[i] = (int32_t) ((double) ((1 << DB2LIN_AMP_BITS) - 1) * pow (10, -(double) i * DB_STEP / 20));
     if (i >= DB_MUTE)
       DB2LIN_TABLE[i] = 0;
     DB2LIN_TABLE[i + DB_MUTE + DB_MUTE] = -DB2LIN_TABLE[i];
@@ -194,20 +194,20 @@ makeDB2LinTable (void)
 }
 
 /* Liner(+0.0 - +1.0) to dB((1<<DB_BITS) - 1 -- 0) */
-static e_int32
+static int32_t
 lin2db (double d)
 {
   if (d == 0)
     return (DB_MUTE - 1);
   else
-    return Min (-(e_int32) (20.0 * log10 (d) / DB_STEP), DB_MUTE - 1);  /* 0 -- 128 */
+    return Min (-(int32_t) (20.0 * log10 (d) / DB_STEP), DB_MUTE - 1);  /* 0 -- 128 */
 }
 
 /* Sin Table */
 static void
 makeSinTable (void)
 {
-  e_int32 i;
+  int32_t i;
 
   for (i = 0; i < PG_WIDTH / 4; i++)
     fullsintable[i] = lin2db (sin (2.0 * PI * i / PG_WIDTH));
@@ -223,34 +223,34 @@ makeSinTable (void)
 static void
 makePmTable (void)
 {
-  e_int32 i;
+  int32_t i;
 
   for (i = 0; i < PM_PG_WIDTH; i++)
-    pmtable[0][i] = (e_int32) ((double) PM_AMP * pow (2, (double) PM_DEPTH * sin (2.0 * PI * i / PM_PG_WIDTH) / 1200));
+    pmtable[0][i] = (int32_t) ((double) PM_AMP * pow (2, (double) PM_DEPTH * sin (2.0 * PI * i / PM_PG_WIDTH) / 1200));
 
   for (i = 0; i < PM_PG_WIDTH; i++)
-    pmtable[1][i] = (e_int32) ((double) PM_AMP * pow (2, (double) PM_DEPTH2 * sin (2.0 * PI * i / PM_PG_WIDTH) / 1200));
+    pmtable[1][i] = (int32_t) ((double) PM_AMP * pow (2, (double) PM_DEPTH2 * sin (2.0 * PI * i / PM_PG_WIDTH) / 1200));
 }
 
 /* Table for Amp Modulator */
 static void
 makeAmTable (void)
 {
-  e_int32 i;
+  int32_t i;
 
   for (i = 0; i < AM_PG_WIDTH; i++)
-    amtable[0][i] = (e_int32) ((double) AM_DEPTH / 2 / DB_STEP * (1.0 + sin (2.0 * PI * i / PM_PG_WIDTH)));
+    amtable[0][i] = (int32_t) ((double) AM_DEPTH / 2 / DB_STEP * (1.0 + sin (2.0 * PI * i / PM_PG_WIDTH)));
 
   for (i = 0; i < AM_PG_WIDTH; i++)
-    amtable[1][i] = (e_int32) ((double) AM_DEPTH2 / 2 / DB_STEP * (1.0 + sin (2.0 * PI * i / PM_PG_WIDTH)));
+    amtable[1][i] = (int32_t) ((double) AM_DEPTH2 / 2 / DB_STEP * (1.0 + sin (2.0 * PI * i / PM_PG_WIDTH)));
 }
 
 /* Phase increment counter table */
 static void
 makeDphaseTable (void)
 {
-  e_uint32 fnum, block, ML;
-  e_uint32 mltable[16] =
+  uint32_t fnum, block, ML;
+  uint32_t mltable[16] =
     { 1, 1 * 2, 2 * 2, 3 * 2, 4 * 2, 5 * 2, 6 * 2, 7 * 2, 8 * 2, 9 * 2, 10 * 2, 10 * 2, 12 * 2, 12 * 2, 15 * 2, 15 * 2 };
 
   for (fnum = 0; fnum < 1024; fnum++)
@@ -262,15 +262,15 @@ makeDphaseTable (void)
 static void
 makeTllTable (void)
 {
-#define dB2(x) (e_uint32)((x)*2)
+#define dB2(x) (uint32_t)((x)*2)
 
-  static e_uint32 kltable[16] = {
+  static uint32_t kltable[16] = {
     dB2 (0.000), dB2 (9.000), dB2 (12.000), dB2 (13.875), dB2 (15.000), dB2 (16.125), dB2 (16.875), dB2 (17.625),
     dB2 (18.000), dB2 (18.750), dB2 (19.125), dB2 (19.500), dB2 (19.875), dB2 (20.250), dB2 (20.625), dB2 (21.000)
   };
 
-  e_int32 tmp;
-  e_int32 fnum, block, TL, KL;
+  int32_t tmp;
+  int32_t fnum, block, TL, KL;
 
   for (fnum = 0; fnum < 16; fnum++)
     for (block = 0; block < 8; block++)
@@ -287,7 +287,7 @@ makeTllTable (void)
             if (tmp <= 0)
               tllTable[fnum][block][TL][KL] = ALIGN (TL, TL_STEP, EG_STEP);
             else
-              tllTable[fnum][block][TL][KL] = (e_uint32) ((tmp >> (3 - KL)) / EG_STEP) + ALIGN (TL, TL_STEP, EG_STEP);
+              tllTable[fnum][block][TL][KL] = (uint32_t) ((tmp >> (3 - KL)) / EG_STEP) + ALIGN (TL, TL_STEP, EG_STEP);
           }
 
         }
@@ -299,7 +299,7 @@ makeTllTable (void)
 static void
 makeDphaseARTable (void)
 {
-  e_int32 AR, Rks, RM, RL;
+  int32_t AR, Rks, RM, RL;
 
   for (AR = 0; AR < 16; AR++)
     for (Rks = 0; Rks < 16; Rks++)
@@ -328,7 +328,7 @@ makeDphaseARTable (void)
 static void
 makeDphaseDRTable (void)
 {
-  e_int32 DR, Rks, RM, RL;
+  int32_t DR, Rks, RM, RL;
 
   for (DR = 0; DR < 16; DR++)
     for (Rks = 0; Rks < 16; Rks++)
@@ -353,7 +353,7 @@ makeDphaseDRTable (void)
 static void
 makeRksTable (void)
 {
-  e_int32 fnum9, block, KR;
+  int32_t fnum9, block, KR;
 
   for (fnum9 = 0; fnum9 < 2; fnum9++)
     for (block = 0; block < 8; block++)
@@ -372,7 +372,7 @@ makeRksTable (void)
 
 ************************************************************/
 
-INLINE static e_uint32
+static inline uint32_t
 calc_eg_dphase (OPL_SLOT * slot)
 {
   switch (slot->eg_mode)
@@ -428,7 +428,7 @@ calc_eg_dphase (OPL_SLOT * slot)
   UPDATE_EG(S)                  /* EG should be last */
 
 /* Slot key on  */
-INLINE static void
+static inline void
 slotOn (OPL_SLOT * slot)
 {
   slot->eg_mode = ATTACK;
@@ -437,7 +437,7 @@ slotOn (OPL_SLOT * slot)
 }
 
 /* Slot key off */
-INLINE static void
+static inline void
 slotOff (OPL_SLOT * slot)
 {
   if (slot->eg_mode == ATTACK)
@@ -447,8 +447,8 @@ slotOff (OPL_SLOT * slot)
 }
 
 /* Channel key on */
-INLINE static void
-keyOn (OPL * opl, e_int32 i)
+static inline void
+keyOn (OPL * opl, int32_t i)
 {
   slotOn (opl->MOD (i));
   slotOn (opl->CAR (i));
@@ -456,84 +456,86 @@ keyOn (OPL * opl, e_int32 i)
 }
 
 /* Channel key off */
-INLINE static void
-keyOff (OPL * opl, e_int32 i)
+static inline void
+keyOff (OPL * opl, int32_t i)
 {
   slotOff (opl->MOD (i));
   slotOff (opl->CAR (i));
   opl->ch[i]->key_status = 0;
 }
 
-INLINE static void
+/**
+static inline void
 keyOn_BD (OPL * opl)
 {
   keyOn (opl, 6);
 }
-INLINE static void
+static inline void
 keyOn_SD (OPL * opl)
 {
   if (!opl->slot_on_flag[SLOT_SD])
     slotOn (opl->CAR (7));
 }
-INLINE static void
+static inline void
 keyOn_TOM (OPL * opl)
 {
   if (!opl->slot_on_flag[SLOT_TOM])
     slotOn (opl->MOD (8));
 }
-INLINE static void
+static inline void
 keyOn_HH (OPL * opl)
 {
   if (!opl->slot_on_flag[SLOT_HH])
     slotOn (opl->MOD (7));
 }
-INLINE static void
+static inline void
 keyOn_CYM (OPL * opl)
 {
   if (!opl->slot_on_flag[SLOT_CYM])
     slotOn (opl->CAR (8));
 }
-INLINE static void
+static inline void
 keyOff_BD (OPL * opl)
 {
   keyOff (opl, 6);
 }
-INLINE static void
+static inline void
 keyOff_SD (OPL * opl)
 {
   if (opl->slot_on_flag[SLOT_SD])
     slotOff (opl->CAR (7));
 }
-INLINE static void
+static inline void
 keyOff_TOM (OPL * opl)
 {
   if (opl->slot_on_flag[SLOT_TOM])
     slotOff (opl->MOD (8));
 }
-INLINE static void
+static inline void
 keyOff_HH (OPL * opl)
 {
   if (opl->slot_on_flag[SLOT_HH])
     slotOff (opl->MOD (7));
 }
-INLINE static void
+static inline void
 keyOff_CYM (OPL * opl)
 {
   if (opl->slot_on_flag[SLOT_CYM])
     slotOff (opl->CAR (8));
 }
+*/
 
 /* Set F-Number ( fnum : 10bit ) */
-INLINE static void
-setFnumber (OPL * opl, e_int32 c, e_int32 fnum)
+static inline void
+setFnumber (OPL * opl, int32_t c, int32_t fnum)
 {
   opl->CAR (c)->fnum = fnum;
   opl->MOD (c)->fnum = fnum;
 }
 
 /* Set Block data (block : 3bit ) */
-INLINE static void
-setBlock (OPL * opl, e_int32 c, e_int32 block)
+static inline void
+setBlock (OPL * opl, int32_t c, int32_t block)
 {
   opl->CAR (c)->block = block;
   opl->MOD (c)->block = block;
@@ -654,12 +656,12 @@ internal_refresh (void)
   makeDphaseTable ();
   makeDphaseARTable ();
   makeDphaseDRTable ();
-  pm_dphase = (e_uint32) rate_adjust (PM_SPEED * PM_DP_WIDTH / (clk / 72));
-  am_dphase = (e_uint32) rate_adjust (AM_SPEED * AM_DP_WIDTH / (clk / 72));
+  pm_dphase = (uint32_t) rate_adjust (PM_SPEED * PM_DP_WIDTH / (clk / 72));
+  am_dphase = (uint32_t) rate_adjust (AM_SPEED * AM_DP_WIDTH / (clk / 72));
 }
 
 static void
-maketables (e_uint32 c, e_uint32 r)
+maketables (uint32_t c, uint32_t r)
 {
   if (c != clk)
   {
@@ -680,10 +682,10 @@ maketables (e_uint32 c, e_uint32 r)
   }
 }
 
-EMU8950_API e_uint32
-OPL_setMask (OPL *opl, e_uint32 mask)
+uint32_t
+OPL_setMask (OPL *opl, uint32_t mask)
 {
-  e_uint32 ret = 0;
+  uint32_t ret = 0;
   if(opl)
   {
     ret = opl->mask;
@@ -692,10 +694,10 @@ OPL_setMask (OPL *opl, e_uint32 mask)
   return ret;
 }
 
-EMU8950_API e_uint32
-OPL_toggleMask (OPL *opl, e_uint32 mask)
+uint32_t
+OPL_toggleMask (OPL *opl, uint32_t mask)
 {
-  e_uint32 ret = 0;
+  uint32_t ret = 0;
   if(opl)
   {
     ret = opl->mask;
@@ -705,11 +707,11 @@ OPL_toggleMask (OPL *opl, e_uint32 mask)
 }
 
 OPL *
-OPL_new (e_uint32 c, e_uint32 r)
+OPL_new (uint32_t c, uint32_t r)
 {
   OPL *opl;
   OPL_CH *ch[9];
-  e_int32 i, j;
+  int32_t i, j;
 
   maketables (c, r);
 
@@ -748,7 +750,7 @@ OPL_new (e_uint32 c, e_uint32 r)
 void
 OPL_delete (OPL * opl)
 {
-  e_int32 i;
+  int32_t i;
 
   ADPCM_delete (opl->adpcm);
 
@@ -762,7 +764,7 @@ OPL_delete (OPL * opl)
 void
 OPL_reset (OPL * opl)
 {
-  e_int32 i;
+  int32_t i;
 
   if (!opl)
     return;
@@ -790,7 +792,7 @@ OPL_reset (OPL * opl)
 
 
 void
-OPL_set_rate (OPL * opl, e_uint32 r)
+OPL_set_rate (OPL * opl, uint32_t r)
 {
   rate = r;
   internal_refresh ();
@@ -820,20 +822,20 @@ OPL_set_rate (OPL * opl, e_uint32 r)
 #define wave2_8pi(e)  ( (e) << ( 2 + PG_BITS - SLOT_AMP_BITS ))
 #endif
 
-INLINE static e_uint32
-mrand (e_uint32 seed)
+static inline uint32_t
+mrand (uint32_t seed)
 {
   return ((seed >> 15) ^ ((seed >> 12) & 1)) | ((seed << 1) & 0xffff);
 }
 
-INLINE static void
+static inline void
 update_noise (OPL * opl)
 {
   opl->noise_seed = mrand (opl->noise_seed);
   whitenoise = opl->noise_seed & 1;
 }
 
-INLINE static void
+static inline void
 update_ampm (OPL * opl)
 {
   opl->pm_phase = (opl->pm_phase + pm_dphase) & (PM_DP_WIDTH - 1);
@@ -842,7 +844,7 @@ update_ampm (OPL * opl)
   lfo_pm = pmtable[opl->pm_mode][HIGHBITS (opl->pm_phase, PM_DP_BITS - PM_PG_BITS)];
 }
 
-INLINE static e_uint32
+static inline uint32_t
 calc_phase (OPL_SLOT * slot)
 {
   if (slot->patch->PM)
@@ -855,15 +857,15 @@ calc_phase (OPL_SLOT * slot)
   return HIGHBITS (slot->phase, DP_BASE_BITS);
 }
 
-INLINE static e_uint32
+static inline uint32_t
 calc_envelope (OPL_SLOT * slot)
 {
-#define S2E(x) (ALIGN((e_int32)(x/SL_STEP),SL_STEP,EG_STEP)<<(EG_DP_BITS-EG_BITS))
-  static e_uint32 SL[16] = {
+#define S2E(x) (ALIGN((int32_t)(x/SL_STEP),SL_STEP,EG_STEP)<<(EG_DP_BITS-EG_BITS))
+  static uint32_t SL[16] = {
     S2E (0), S2E (3), S2E (6), S2E (9), S2E (12), S2E (15), S2E (18), S2E (21),
     S2E (24), S2E (27), S2E (30), S2E (33), S2E (36), S2E (39), S2E (42), S2E (93)
   };
-  e_uint32 egout;
+  uint32_t egout;
 
 
   switch (slot->eg_mode)
@@ -945,8 +947,8 @@ calc_envelope (OPL_SLOT * slot)
   return egout;
 }
 
-INLINE static e_int32
-calc_slot_car (OPL_SLOT * slot, e_int32 fm)
+static inline int32_t
+calc_slot_car (OPL_SLOT * slot, int32_t fm)
 {
 
   slot->egout = calc_envelope (slot);
@@ -958,11 +960,11 @@ calc_slot_car (OPL_SLOT * slot, e_int32 fm)
 
 }
 
-INLINE static e_int32
+static inline int32_t
 calc_slot_mod (OPL_SLOT * slot)
 {
 
-  e_int32 fm;
+  int32_t fm;
 
   slot->output[1] = slot->output[0];
   slot->egout = calc_envelope (slot);
@@ -986,12 +988,12 @@ calc_slot_mod (OPL_SLOT * slot)
 
 }
 
-e_int16
+int16_t
 OPL_calc (OPL * opl)
 {
 
-  e_int32 inst = 0, perc = 0, out = 0;
-  e_int32 i;
+  int32_t inst = 0, perc = 0, out = 0;
+  int32_t i;
 
   update_ampm (opl);
   update_noise (opl);
@@ -1030,17 +1032,17 @@ OPL_calc (OPL * opl)
   if (out < -32768)
     return -32768;
 
-  return (e_int16) out;
+  return (int16_t) out;
 
 }
 
 void
-OPL_writeReg (OPL * opl, e_uint32 reg, e_uint32 data)
+OPL_writeReg (OPL * opl, uint32_t reg, uint32_t data)
 {
 
-  e_int32 s, c;
+  int32_t s, c;
 
-  e_int32 stbl[32] = { 0, 2, 4, 1, 3, 5, -1, -1,
+  int32_t stbl[32] = { 0, 2, 4, 1, 3, 5, -1, -1,
     6, 8, 10, 7, 9, 11, -1, -1,
     12, 14, 16, 13, 15, 17, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1
@@ -1151,14 +1153,14 @@ OPL_writeReg (OPL * opl, e_uint32 reg, e_uint32 data)
 
 }
 
-e_uint32
+uint32_t
 OPL_readIO (OPL * opl)
 {
   return opl->reg[opl->adr];
 }
 
 void
-OPL_writeIO (OPL * opl, e_uint32 adr, e_uint32 val)
+OPL_writeIO (OPL * opl, uint32_t adr, uint32_t val)
 {
   adr &= 0xff;
   if (adr & 1)
@@ -1167,7 +1169,7 @@ OPL_writeIO (OPL * opl, e_uint32 adr, e_uint32 val)
     opl->adr = val;
 }
 
-e_uint32
+uint32_t
 OPL_status (OPL * opl)
 {
   return ADPCM_status (opl->adpcm);

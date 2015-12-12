@@ -1,57 +1,48 @@
 #ifndef _EMU8950_H_
 #define _EMU8950_H_
 
+#include <stdint.h>
 #include "emuadpcm.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#ifdef EMU8950_DLL_EXPORTS
-  #define EMU8950_API __declspec(dllexport)
-#elif defined(EMU8950_DLL_IMPORTS)
-  #define EMU8950_API __declspec(dllimport)
-#else
-  #define EMU8950_API
-#endif
-
 #define PI 3.14159265358979323846
-
-#include "emutypes.h"
 
 /* voice data */
 typedef struct __OPL_PATCH {
-  e_uint32 TL,FB,EG,ML,AR,DR,SL,RR,KR,KL,AM,PM,WF ;
+  uint32_t TL,FB,EG,ML,AR,DR,SL,RR,KR,KL,AM,PM,WF ;
 } OPL_PATCH ;
 
 /* slot */
 typedef struct __OPL_SLOT {
 
-  e_int32 type ;          /* 0 : modulator 1 : carrier */
+  int32_t type ;          /* 0 : modulator 1 : carrier */
 
   /* OUTPUT */
-  e_int32 feedback ;
-  e_int32 output[5] ;      /* Output value of slot */
+  int32_t feedback ;
+  int32_t output[5] ;      /* Output value of slot */
 
   /* for Phase Generator (PG) */
-  e_uint32 *sintbl ;    /* Wavetable */
-  e_uint32 phase ;      /* Phase */
-  e_uint32 dphase ;     /* Phase increment amount */
-  e_uint32 pgout ;      /* output */
+  uint32_t *sintbl ;    /* Wavetable */
+  uint32_t phase ;      /* Phase */
+  uint32_t dphase ;     /* Phase increment amount */
+  uint32_t pgout ;      /* output */
 
   /* for Envelope Generator (EG) */
-  e_int32 fnum ;          /* F-Number */
-  e_int32 block ;         /* Block */
-  e_uint32 tll ;	      /* Total Level + Key scale level*/
-  e_uint32 rks ;        /* Key scale offset (Rks) */
-  e_int32 eg_mode ;       /* Current state */
-  e_uint32 eg_phase ;   /* Phase */
-  e_uint32 eg_dphase ;  /* Phase increment amount */
-  e_uint32 egout ;      /* output */
+  int32_t fnum ;          /* F-Number */
+  int32_t block ;         /* Block */
+  uint32_t tll ;	      /* Total Level + Key scale level*/
+  uint32_t rks ;        /* Key scale offset (Rks) */
+  int32_t eg_mode ;       /* Current state */
+  uint32_t eg_phase ;   /* Phase */
+  uint32_t eg_dphase ;  /* Phase increment amount */
+  uint32_t egout ;      /* output */
 
   /* LFO (refer to OPL->*) */
-  e_int32 *plfo_am ;
-  e_int32 *plfo_pm ;
+  int32_t *plfo_am ;
+  int32_t *plfo_pm ;
 
   OPL_PATCH *patch;  
 
@@ -60,8 +51,8 @@ typedef struct __OPL_SLOT {
 /* Channel */
 typedef struct __OPL_CH {
 
-  e_int32 key_status ;
-  e_int32 alg ;
+  int32_t key_status ;
+  int32_t alg ;
   OPL_SLOT *mod, *car ;
 
 } OPL_CH ;
@@ -69,39 +60,39 @@ typedef struct __OPL_CH {
 /* OPL */
 typedef struct __OPL {
 
-  e_uint32 realstep ;
-  e_uint32 opltime ;
-  e_uint32 oplstep ;
+  uint32_t realstep ;
+  uint32_t opltime ;
+  uint32_t oplstep ;
 
   ADPCM *adpcm;
 
-  e_uint32 adr ;
+  uint32_t adr ;
 
-  e_int32 out ;
+  int32_t out ;
 
   /* Register */
   unsigned char reg[0xff] ; 
-  e_int32 slot_on_flag[18] ;
+  int32_t slot_on_flag[18] ;
 
   /* Rythm Mode : 0 = OFF, 1 = ON */
-  e_int32 rhythm_mode ;
+  int32_t rhythm_mode ;
 
   /* Pitch Modulator */
-  e_int32 pm_mode ;
-  e_uint32 pm_phase ;
+  int32_t pm_mode ;
+  uint32_t pm_phase ;
 
   /* Amp Modulator */
-  e_int32 am_mode ;
-  e_uint32 am_phase ;
+  int32_t am_mode ;
+  uint32_t am_phase ;
 
   /* Noise Generator */
-  e_uint32 noise_seed ;
+  uint32_t noise_seed ;
 
   /* Channel & Slot */
   OPL_CH *ch[9] ;
   OPL_SLOT *slot[18] ;
 
-  e_uint32 mask ;
+  uint32_t mask ;
 
 } OPL ;
 
@@ -115,17 +106,17 @@ typedef struct __OPL {
 #define OPL_MASK_RHYTHM ( OPLL_MASK_HH | OPLL_MASK_CYM | OPLL_MASK_TOM | OPLL_MASK_SD | OPLL_MASK_BD )
 #define OPL_MASK_PCM (1<<14)
 
-EMU8950_API OPL *OPL_new(e_uint32 clk, e_uint32 rate) ;
-EMU8950_API void OPL_set_rate(OPL *opl, e_uint32 rate) ;
-EMU8950_API void OPL_reset(OPL *opl) ;
-EMU8950_API void OPL_delete(OPL *opl) ;
-EMU8950_API void OPL_writeReg(OPL *opl, e_uint32 reg, e_uint32 val) ;
-EMU8950_API e_int16 OPL_calc(OPL *opl) ;
-EMU8950_API void OPL_writeIO(OPL *opl, e_uint32 adr, e_uint32 val) ;
-EMU8950_API e_uint32 OPL_readIO(OPL *opl) ;
-EMU8950_API e_uint32 OPL_status(OPL *opl) ;
-EMU8950_API e_uint32 OPL_setMask(OPL *opl, e_uint32 mask);
-EMU8950_API e_uint32 OPL_toggleMask(OPL *opl, e_uint32 mask);
+OPL *OPL_new(uint32_t clk, uint32_t rate) ;
+void OPL_set_rate(OPL *opl, uint32_t rate) ;
+void OPL_reset(OPL *opl) ;
+void OPL_delete(OPL *opl) ;
+void OPL_writeReg(OPL *opl, uint32_t reg, uint32_t val) ;
+int16_t OPL_calc(OPL *opl) ;
+void OPL_writeIO(OPL *opl, uint32_t adr, uint32_t val) ;
+uint32_t OPL_readIO(OPL *opl) ;
+uint32_t OPL_status(OPL *opl) ;
+uint32_t OPL_setMask(OPL *opl, uint32_t mask);
+uint32_t OPL_toggleMask(OPL *opl, uint32_t mask);
 
 #ifdef __cplusplus
 }

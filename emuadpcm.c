@@ -8,14 +8,6 @@
 #include "emuadpcm.h"
 #include "assert.h"
 
-#if defined(_MSC_VER)
-#define INLINE __forceinline
-#elif defined(__GNUC__)
-#define INLINE __inline__
-#else
-#define INLINE
-#endif
-
 #define DMAX 0x5FFF
 #define DMIN 0x7F
 #define DDEF 0x7F
@@ -56,12 +48,12 @@
 #define STATUS_T2 (R04_MASK_T2|0x80)
 #define STATUS_T1 (R04_MASK_T1|0x80)
 
-#define rate_adjust(x,clk,rate) (e_uint32)((double)(x)*clk/72/rate + 0.5)       /* +0.5 to round */
+#define rate_adjust(x,clk,rate) (uint32_t)((double)(x)*clk/72/rate + 0.5)       /* +0.5 to round */
 
 FILE *fp;
 
-EMU8950_ADPCM_API ADPCM *
-ADPCM_new (e_uint32 clk, e_uint32 rate)
+ADPCM *
+ADPCM_new (uint32_t clk, uint32_t rate)
 {
   ADPCM *_this;
 
@@ -73,13 +65,13 @@ ADPCM_new (e_uint32 clk, e_uint32 rate)
   _this->rate = rate ? rate : 44100;
 
   /* 256Kbytes RAM */
-  _this->memory[0] = (e_uint8 *) malloc (256 * 1024);
+  _this->memory[0] = (uint8_t *) malloc (256 * 1024);
   if (!_this->memory[0])
     goto Error_Exit;
   memset (_this->memory[0], 0, 256 * 1024);
 
   /* 256Kbytes ROM */
-  _this->memory[1] = (e_uint8 *) malloc (256 * 1024);
+  _this->memory[1] = (uint8_t *) malloc (256 * 1024);
   if (!_this->memory[1])
     goto Error_Exit;
   memset (_this->memory[1], 0, 256 * 1024);
@@ -93,13 +85,13 @@ Error_Exit:
   return NULL;
 }
 
-EMU8950_ADPCM_API void
-ADPCM_set_rate (ADPCM * _this, e_uint32 r)
+void
+ADPCM_set_rate (ADPCM * _this, uint32_t r)
 {
   _this->rate = r ? r : 44100;
 }
 
-EMU8950_ADPCM_API void
+void
 ADPCM_delete (ADPCM * _this)
 {
   if (_this)
@@ -110,7 +102,7 @@ ADPCM_delete (ADPCM * _this)
   }
 }
 
-EMU8950_ADPCM_API void
+void
 ADPCM_reset (ADPCM * _this)
 {
   int i;
@@ -137,7 +129,7 @@ ADPCM_reset (ADPCM * _this)
 #define DELTA_ADDR_MASK (DELTA_ADDR_MAX-1)
 
 /* Update ADPCM data stage (Register $0F) */
-INLINE static int
+static inline int
 update_stage (ADPCM * _this)
 {
   _this->delta_addr += _this->delta_n;
@@ -170,10 +162,10 @@ update_stage (ADPCM * _this)
   return 0;
 }
 
-INLINE static void
-update_output (ADPCM * _this, e_uint32 val)
+static inline void
+update_output (ADPCM * _this, uint32_t val)
 {
-  static e_uint32 F[] = {
+  static uint32_t F[] = {
     57, 57, 57, 57, 77, 102, 128, 153   // This table values are from ymdelta.c by Tatsuyuki Satoh.
   };
 
@@ -188,10 +180,10 @@ update_output (ADPCM * _this, e_uint32 val)
   _this->diff = CLAP (DMIN, (_this->diff * F[val & 7]) >> 6, DMAX);
 }
 
-INLINE static e_uint32
+static inline uint32_t
 calc (ADPCM * _this)
 {
-  e_uint32 val;
+  uint32_t val;
 
   if (_this->play_start && update_stage (_this))
   {
@@ -206,7 +198,7 @@ calc (ADPCM * _this)
   return ((_this->output[0] + _this->output[1]) * (_this->reg[0x12] & 0xff)) >> 13;
 }
 
-EMU8950_ADPCM_API e_int16
+int16_t
 ADPCM_calc (ADPCM * _this)
 {
   if (_this->reg[0x07] & R07_SP_OFF)
@@ -215,8 +207,8 @@ ADPCM_calc (ADPCM * _this)
   return calc (_this);
 }
 
-EMU8950_ADPCM_API void
-ADPCM_writeReg (ADPCM * _this, e_uint32 adr, e_uint32 data)
+void
+ADPCM_writeReg (ADPCM * _this, uint32_t adr, uint32_t data)
 {
   adr &= 0x1f;
   data &= 0xff;
@@ -333,7 +325,7 @@ ADPCM_writeReg (ADPCM * _this, e_uint32 adr, e_uint32 data)
   }
 }
 
-EMU8950_ADPCM_API e_uint32
+uint32_t
 ADPCM_status (ADPCM * _this)
 {
   return _this->status;
