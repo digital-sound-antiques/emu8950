@@ -1,13 +1,14 @@
 /****************************************************************************
 
-  emu8950.c -- Y8950 emulator : written by Mitsutaka Okazaki 2003
+  emu8950.c -- Y8950 emulator : written by Mitsutaka Okazaki 2003-2016
 
   Note: rythm channels are not yet implemented. 
 
   2001 05-19 : Version 0.10 -- Test release.
   2001 ??-?? : Version 0.11 -- Added ADPCM.
   2002 03-02 : Version 0.12 -- Removed OPL_init & OPL_close.
-  2003 09-19 : Version 0.13 -- Added OPL_setMask & OPL_toggleMask
+  2003 09-19 : Version 0.13 -- Added OPL_setMask & OPL_toggleMask.
+  2016 09-06 : Version 0.14 -- Support per-channel output.
 
   References: 
     fmopl.c        -- 1999,2000 written by Tatsuyuki Satoh.
@@ -781,10 +782,9 @@ OPL_reset (OPL * opl)
   opl->am_phase = 0;
   opl->noise_seed = 0xffff;
 
-  for (i = 0; i < 0xFF; i++)
-    opl->reg[i] = 0x00;
-  for (i = 0; i < 18; i++)
-    opl->slot_on_flag[i] = 0;
+  memset(opl->reg, 0, sizeof(opl->reg));
+  memset(opl->slot_on_flag, 0, sizeof(opl->slot_on_flag));
+  memset(opl->ch_out, 0, sizeof(opl->ch_out));
 
   ADPCM_reset (opl->adpcm);
 
@@ -988,6 +988,17 @@ calc_slot_mod (OPL_SLOT * slot)
 
 }
 
+static inline int16_t
+mix_output(OPL * opl)
+{
+  int32_t out = opl->ch_out[0];
+  int i;
+  for(i=1;i<15;i++) {
+    out+= opl->ch_out[i];
+  }
+  return (int16_t)out;
+}
+
 int16_t
 OPL_calc (OPL * opl)
 {
@@ -1003,10 +1014,11 @@ OPL_calc (OPL * opl)
     if (!(opl->mask&OPL_MASK_CH(i)) && (opl->CAR (i)->eg_mode != FINISH))
     {
       if (opl->ch[i]->alg)
-        inst += calc_slot_car (opl->CAR (i), 0) + calc_slot_mod (opl->MOD (i));
+        opl->ch_out[i] += calc_slot_car (opl->CAR (i), 0) + calc_slot_mod (opl->MOD (i));
       else
-        inst += calc_slot_car (opl->CAR (i), calc_slot_mod (opl->MOD (i)));
+        opl->ch_out[i] += calc_slot_car (opl->CAR (i), calc_slot_mod (opl->MOD (i)));
     }
+    opl->ch_out[i] >>= 1;
   }
 
   if (!opl->rhythm_mode)
@@ -1016,23 +1028,21 @@ OPL_calc (OPL * opl)
       if (!(opl->mask&OPL_MASK_CH(i)) && (opl->CAR (i)->eg_mode != FINISH))
       {
         if (opl->ch[i]->alg)
-          inst += calc_slot_car (opl->CAR (i), 0) + calc_slot_mod (opl->MOD (i));
+          opl->ch_out[i] += calc_slot_car (opl->CAR (i), 0) + calc_slot_mod (opl->MOD (i));
         else
-          inst += calc_slot_car (opl->CAR (i), calc_slot_mod (opl->MOD (i)));
+          opl->ch_out[i] += calc_slot_car (opl->CAR (i), calc_slot_mod (opl->MOD (i)));
       }
+      opl->ch_out[i] >>= 1;
     }
   }
 
   out = inst + perc;
-  if(!(opl->mask&OPL_MASK_PCM))
-    out+=ADPCM_calc (opl->adpcm);
+  if(!(opl->mask&OPL_MASK_PCM)) {
+    opl->ch_out[14] += ADPCM_calc (opl->adpcm);
+  }
+  opl->ch_out[14] >>= 1;
 
-  if (out > 32767)
-    return 32767;
-  if (out < -32768)
-    return -32768;
-
-  return (int16_t) out;
+  return mix_output(opl);
 
 }
 

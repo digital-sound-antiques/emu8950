@@ -71,7 +71,7 @@ typedef struct __OPL {
   int32_t out ;
 
   /* Register */
-  unsigned char reg[0xff] ; 
+  uint8_t reg[0xff] ; 
   int32_t slot_on_flag[18] ;
 
   /* Rythm Mode : 0 = OFF, 1 = ON */
@@ -93,6 +93,9 @@ typedef struct __OPL {
   OPL_SLOT *slot[18] ;
 
   uint32_t mask ;
+
+  /* Channel output 0-8:FM 9-13:RHYTHM(not implemented) 14:ADPCM */
+  int16_t ch_out[15];
 
 } OPL ;
 
