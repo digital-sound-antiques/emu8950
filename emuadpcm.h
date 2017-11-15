@@ -33,6 +33,8 @@ typedef struct __ADPCM
 
 } ADPCM ;
 
+uint8_t is_adpcm_used();
+
 ADPCM *ADPCM_new(uint32_t clk, uint32_t rate);
 void ADPCM_set_rate(ADPCM *, uint32_t rate);
 void ADPCM_reset(ADPCM *);

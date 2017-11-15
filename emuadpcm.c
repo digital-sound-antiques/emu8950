@@ -52,6 +52,12 @@
 
 FILE *fp;
 
+uint8_t adpcm_used = 0;
+
+uint8_t is_adpcm_used() {
+        return adpcm_used;
+}
+
 ADPCM *
 ADPCM_new (uint32_t clk, uint32_t rate)
 {
@@ -296,6 +302,8 @@ ADPCM_writeReg (ADPCM * _this, uint32_t adr, uint32_t data)
     break;
 
   case 0x0F:                   /* ADPCM-DATA */
+    adpcm_used = 1;
+
     _this->reg[0x0F] = data;
 
     if ((_this->reg[0x07] & R07_REC) && (_this->reg[0x07] & R07_MEMORY_DATA))
