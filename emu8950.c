@@ -1095,7 +1095,7 @@ void OPL_reset(OPL *opl) {
 void OPL_setRate(OPL *opl, uint32_t rate) {
   opl->rate = rate;
   reset_rate_conversion_params(opl);
-  OPL_ADPCM_setRate(opl->adpcm, rate);
+  OPL_ADPCM_setRate(opl->adpcm, opl->clk / 72);
 }
 
 void OPL_setQuality(OPL *opl, uint8_t q) {}
@@ -1268,3 +1268,11 @@ void OPL_writeReg(OPL *opl, uint32_t reg, uint8_t data) {
 uint8_t OPL_readIO(OPL *opl) { return opl->reg[opl->adr]; }
 
 uint8_t OPL_status(OPL *opl) { return OPL_ADPCM_status(opl->adpcm); }
+
+void OPL_writeADPCMData(OPL *opl, uint8_t type, uint32_t start, uint32_t length, const uint8_t *data) {
+  if (type == 0) {
+    OPL_ADPCM_writeRAM(opl->adpcm, start, length, data);
+  } else {
+    OPL_ADPCM_writeROM(opl->adpcm, start, length, data); 
+  }
+}

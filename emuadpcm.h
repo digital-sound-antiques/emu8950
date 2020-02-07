@@ -38,6 +38,7 @@ void OPL_ADPCM_reset(OPL_ADPCM *);
 void OPL_ADPCM_delete(OPL_ADPCM *);
 void OPL_ADPCM_writeReg(OPL_ADPCM *, uint32_t reg, uint32_t val);
 int16_t OPL_ADPCM_calc(OPL_ADPCM *);
-uint32_t OPL_ADPCM_status(OPL_ADPCM *);
-
+uint8_t OPL_ADPCM_status(OPL_ADPCM *);
+void OPL_ADPCM_writeRAM(OPL_ADPCM *_this, uint32_t start, uint32_t length, const uint8_t *data);
+void OPL_ADPCM_writeROM(OPL_ADPCM *_this, uint32_t start, uint32_t length, const uint8_t *data);
 #endif

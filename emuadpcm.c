@@ -48,6 +48,9 @@
 #define STATUS_T2 (R04_MASK_T2 | 0x80)
 #define STATUS_T1 (R04_MASK_T1 | 0x80)
 
+#define RAM_SIZE (256 * 1024)
+#define ROM_SIZE (256 * 1024)
+
 #define rate_adjust(x, clk, rate) (uint32_t)((double)(x)*clk / 72 / rate + 0.5) /* +0.5 to round */
 
 FILE *fp;
@@ -63,16 +66,16 @@ OPL_ADPCM *OPL_ADPCM_new(uint32_t clk, uint32_t rate) {
   _this->rate = rate ? rate : 44100;
 
   /* 256Kbytes RAM */
-  _this->memory[0] = (uint8_t *)malloc(256 * 1024);
+  _this->memory[0] = (uint8_t *)malloc(RAM_SIZE);
   if (!_this->memory[0])
     goto Error_Exit;
-  memset(_this->memory[0], 0, 256 * 1024);
+  memset(_this->memory[0], 0, RAM_SIZE);
 
   /* 256Kbytes ROM */
-  _this->memory[1] = (uint8_t *)malloc(256 * 1024);
+  _this->memory[1] = (uint8_t *)malloc(ROM_SIZE);
   if (!_this->memory[1])
     goto Error_Exit;
-  memset(_this->memory[1], 0, 256 * 1024);
+  memset(_this->memory[1], 0, ROM_SIZE);
 
   OPL_ADPCM_reset(_this);
 
@@ -179,6 +182,25 @@ int16_t OPL_ADPCM_calc(OPL_ADPCM *_this) {
   return calc(_this);
 }
 
+/* mode= 0:RAM256k 1:ROM 2:RAM64k */
+uint32_t decode_start_address(uint8_t mode, uint8_t l, uint8_t h) {
+  switch (mode) {
+  case 0:
+    return ((h << 8) | l) << 2;
+  default:
+    return ((h << 8) | l) << 5;  
+  }
+}
+
+uint32_t decode_stop_address(uint8_t mode, uint8_t l, uint8_t h) {
+  switch (mode) {
+  case 0:
+    return (((h << 8) | l) << 2) | 3;
+  default:
+    return (((h << 8) | l) << 5) | 31;
+  }
+}
+
 void OPL_ADPCM_writeReg(OPL_ADPCM *_this, uint32_t adr, uint32_t data) {
   adr &= 0x1f;
   data &= 0xff;
@@ -241,13 +263,13 @@ void OPL_ADPCM_writeReg(OPL_ADPCM *_this, uint32_t adr, uint32_t data) {
   case 0x09: /* START ADDRESS (L) */
   case 0x0A: /* START ADDRESS (H) */
     _this->reg[adr] = data;
-    _this->start_addr = ((_this->reg[0x0A] << 8) | _this->reg[0x09]) << 3;
+    _this->start_addr = decode_start_address(_this->reg[0x08] & 3, _this->reg[0x09], _this->reg[0x0A]) << 1;
     break;
 
   case 0x0B: /* STOP ADDRESS (L) */
   case 0x0C: /* STOP ADDRESS (H) */
     _this->reg[adr] = data;
-    _this->stop_addr = (((_this->reg[0x0C]) << 8) | _this->reg[0x0B]) << 3;
+    _this->stop_addr = decode_stop_address(_this->reg[0x08] & 3, _this->reg[0x0B], _this->reg[0x0C]) << 1;
     break;
 
   case 0x0D: /* PRESCALE (L) */
@@ -286,4 +308,20 @@ void OPL_ADPCM_writeReg(OPL_ADPCM *_this, uint32_t adr, uint32_t data) {
   }
 }
 
-uint32_t OPL_ADPCM_status(OPL_ADPCM *_this) { return _this->status; }
+uint8_t OPL_ADPCM_status(OPL_ADPCM *_this) { return _this->status; }
+
+void OPL_ADPCM_writeRAM(OPL_ADPCM *_this, uint32_t start, uint32_t length, const uint8_t *data) {
+  if (start >= RAM_SIZE) return;
+  if (start + length > RAM_SIZE) {
+    length = RAM_SIZE - start;
+  }
+  memcpy(_this->memory[0] + start, data, length);
+}
+
+void OPL_ADPCM_writeROM(OPL_ADPCM *_this, uint32_t start, uint32_t length, const uint8_t *data) {
+  if (start >= ROM_SIZE) return;
+  if (start + length > ROM_SIZE) {
+    length = ROM_SIZE - start;
+  }
+  memcpy(_this->memory[1] + start, data, length);
+}

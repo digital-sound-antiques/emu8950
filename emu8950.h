@@ -209,6 +209,8 @@ uint32_t OPL_toggleMask(OPL *, uint32_t mask);
 uint8_t OPL_readIO(OPL *opl);
 uint8_t OPL_status(OPL *opl);
 
+void OPL_writeADPCMData(OPL *opl, uint8_t type, uint32_t start, uint32_t length, const uint8_t *data);
+
 /* for compatibility */
 #define OPL_set_rate OPL_setRate
 #define OPL_set_quality OPL_setQuality
