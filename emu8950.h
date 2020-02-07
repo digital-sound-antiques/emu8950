@@ -8,6 +8,8 @@
 extern "C" {
 #endif
 
+#define OPL_DEBUG 0
+
 /* voice data */
 typedef struct __OPL_PATCH {
   uint8_t TL, FB, EG, ML, AR, DR, SL, RR, KR, KL, AM, PM, WF;
@@ -74,7 +76,7 @@ typedef struct __OPLL_SLOT {
 
   uint32_t update_requests; /* flags to debounce update */
 
-#if OPLL_DEBUG
+#if OPL_DEBUG
   uint8_t last_eg_state;
 #endif
 } OPL_SLOT;

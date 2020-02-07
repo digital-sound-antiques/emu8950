@@ -46,7 +46,6 @@ typedef enum __OPL_EG_STATE { ATTACK, DECAY, SUSTAIN, RELEASE, DAMP, UNKNOWN } O
 #define DAMPER_RATE 12
 
 #define TL2EG(tl) ((tl) << 2)
-#define SL2EG(sl) ((sl) == 15 ? EG_MAX : (sl) << 4)
 
 /* sine table */
 #define PG_BITS 10 /* 2^10 = 1024 length sine table */
@@ -398,9 +397,9 @@ static char *_debug_eg_state_name(OPL_SLOT *slot) {
 
 static INLINE void _debug_print_slot_info(OPL_SLOT *slot) {
   char *name = _debug_eg_state_name(slot);
+  _debug_print_patch(slot);
   printf("[slot#%d state:%s fnum:%03x rate:%d-%d]\n", slot->number, name, slot->blk_fnum, slot->eg_rate_h,
          slot->eg_rate_l);
-  _debug_print_patch(slot);
   fflush(stdout);
 }
 #endif
@@ -414,11 +413,7 @@ static INLINE int get_parameter_rate(OPL_SLOT *slot) {
   case SUSTAIN:
     return slot->patch->EG ? 0 : slot->patch->RR;
   case RELEASE:
-    if (slot->patch->EG) {
-      return slot->patch->RR;
-    } else {
-      return 7;
-    }
+    return slot->patch->RR;
   case DAMP:
     return DAMPER_RATE;
   default:
@@ -437,13 +432,6 @@ enum SLOT_UPDATE_FLAG {
 static INLINE void request_update(OPL_SLOT *slot, int flag) { slot->update_requests |= flag; }
 
 static void commit_slot_update(OPL_SLOT *slot) {
-
-#if OPL_DEBUG
-  if (slot->last_eg_state != slot->eg_state) {
-    _debug_print_slot_info(slot);
-    slot->last_eg_state = slot->eg_state;
-  }
-#endif
 
   if (slot->update_requests & UPDATE_WF) {
     slot->wave_table = wave_table_map[slot->patch->WF & 3];
@@ -468,17 +456,23 @@ static void commit_slot_update(OPL_SLOT *slot) {
       slot->eg_shift = 0;
       slot->eg_rate_h = 0;
       slot->eg_rate_l = 0;
-      return;
-    }
-
-    slot->eg_rate_h = min(15, p_rate + (slot->rks >> 2));
-    slot->eg_rate_l = slot->rks & 3;
-    if (slot->eg_state == ATTACK) {
-      slot->eg_shift = (0 < slot->eg_rate_h && slot->eg_rate_h < 12) ? (12 - slot->eg_rate_h) : 0;
     } else {
-      slot->eg_shift = (slot->eg_rate_h < 12) ? (12 - slot->eg_rate_h) : 0;
+      slot->eg_rate_h = min(15, p_rate + (slot->rks >> 2));
+      slot->eg_rate_l = slot->rks & 3;
+      if (slot->eg_state == ATTACK) {
+        slot->eg_shift = (0 < slot->eg_rate_h && slot->eg_rate_h < 12) ? (12 - slot->eg_rate_h) : 0;
+      } else {
+        slot->eg_shift = (slot->eg_rate_h < 12) ? (12 - slot->eg_rate_h) : 0;
+      }
     }
   }
+
+#if OPL_DEBUG
+  if (slot->last_eg_state != slot->eg_state) {
+    _debug_print_slot_info(slot);
+    slot->last_eg_state = slot->eg_state;
+  }
+#endif
 
   slot->update_requests = 0;
 }
@@ -512,10 +506,8 @@ static INLINE void slotOn(OPL *opl, int i) {
 
 static INLINE void slotOff(OPL *opl, int i) {
   OPL_SLOT *slot = &opl->slot[i];
-  if (slot->type & 1) {
-    slot->eg_state = RELEASE;
-    request_update(slot, UPDATE_EG);
-  }
+  slot->eg_state = RELEASE;
+  request_update(slot, UPDATE_EG);
 }
 
 static INLINE void update_key_status(OPL *opl) {
@@ -787,7 +779,7 @@ static INLINE void calc_envelope(OPL_SLOT *slot, OPL_SLOT *buddy, uint16_t eg_co
     break;
 
   case DECAY:
-    if (slot->eg_out == SL2EG(slot->patch->SL)) {
+    if ((slot->patch->SL != 15) && (slot->eg_out >> 4) == slot->patch->SL) {
       slot->eg_state = SUSTAIN;
       request_update(slot, UPDATE_EG);
     }
