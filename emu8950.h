@@ -1,141 +1,211 @@
 #ifndef _EMU8950_H_
 #define _EMU8950_H_
 
-#include <stdint.h>
 #include "emuadpcm.h"
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define PI 3.14159265358979323846
-
 /* voice data */
 typedef struct __OPL_PATCH {
-  uint32_t TL,FB,EG,ML,AR,DR,SL,RR,KR,KL,AM,PM,WF ;
-} OPL_PATCH ;
+  uint8_t TL, FB, EG, ML, AR, DR, SL, RR, KR, KL, AM, PM, WF;
+} OPL_PATCH;
+
+/* mask */
+#define OPL_MASK_CH(x) (1 << (x))
+#define OPL_MASK_HH (1 << (9))
+#define OPL_MASK_CYM (1 << (10))
+#define OPL_MASK_TOM (1 << (11))
+#define OPL_MASK_SD (1 << (12))
+#define OPL_MASK_BD (1 << (13))
+#define OPL_MASK_RHYTHM (OPL_MASK_HH | OPL_MASK_CYM | OPL_MASK_TOM | OPL_MASK_SD | OPL_MASK_BD)
+
+/* rate conveter */
+typedef struct __OPL_RateConv {
+  int ch;
+  double timer;
+  double f_ratio;
+  int16_t *sinc_table;
+  int16_t **buf;
+} OPL_RateConv;
+
+OPL_RateConv *OPL_RateConv_new(double f_inp, double f_out, int ch);
+void OPL_RateConv_reset(OPL_RateConv *conv);
+void OPL_RateConv_putData(OPL_RateConv *conv, int ch, int16_t data);
+int16_t OPL_RateConv_getData(OPL_RateConv *conv, int ch);
+void OPL_RateConv_delete(OPL_RateConv *conv);
 
 /* slot */
-typedef struct __OPL_SLOT {
+typedef struct __OPLL_SLOT {
+  uint8_t number;
 
-  int32_t type ;          /* 0 : modulator 1 : carrier */
+  /* type flags:
+   * 000000SM 
+   *       |+-- M: 0:modulator 1:carrier
+   *       +--- S: 0:normal 1:single slot mode (sd, tom, hh or cym) 
+   */
+  uint8_t type;
 
-  /* OUTPUT */
-  int32_t feedback ;
-  int32_t output[5] ;      /* Output value of slot */
+  OPL_PATCH __patch;  
+  OPL_PATCH *patch;  /* = alias for __patch */
 
-  /* for Phase Generator (PG) */
-  uint32_t *sintbl ;    /* Wavetable */
-  uint32_t phase ;      /* Phase */
-  uint32_t dphase ;     /* Phase increment amount */
-  uint32_t pgout ;      /* output */
+  /* slot output */
+  int32_t output[2]; /* output value, latest and previous. */
 
-  /* for Envelope Generator (EG) */
-  int32_t fnum ;          /* F-Number */
-  int32_t block ;         /* Block */
-  uint32_t tll ;	      /* Total Level + Key scale level*/
-  uint32_t rks ;        /* Key scale offset (Rks) */
-  int32_t eg_mode ;       /* Current state */
-  uint32_t eg_phase ;   /* Phase */
-  uint32_t eg_dphase ;  /* Phase increment amount */
-  uint32_t egout ;      /* output */
+  /* phase generator (pg) */
+  uint16_t *wave_table; /* wave table */
+  uint32_t pg_phase;    /* pg phase */
+  uint32_t pg_out;      /* pg output, as index of wave table */
+  uint8_t pg_keep;      /* if 1, pg_phase is preserved when key-on */
+  uint16_t blk_fnum;    /* (block << 9) | f-number */
+  uint16_t fnum;        /* f-number (9 bits) */
+  uint8_t blk;          /* block (3 bits) */
 
-  /* LFO (refer to OPL->*) */
-  int32_t *plfo_am ;
-  int32_t *plfo_pm ;
+  /* envelope generator (eg) */
+  uint8_t eg_state;         /* current state */
+  uint16_t tll;             /* total level + key scale level*/
+  uint8_t rks;              /* key scale offset (rks) for eg speed */
+  uint8_t eg_rate_h;        /* eg speed rate high 4bits */
+  uint8_t eg_rate_l;        /* eg speed rate low 2bits */
+  uint32_t eg_shift;        /* shift for eg global counter, controls envelope speed */
+  int32_t eg_out;           /* eg output */
 
-  OPL_PATCH *patch;  
+  uint32_t update_requests; /* flags to debounce update */
 
-} OPL_SLOT ;
+#if OPLL_DEBUG
+  uint8_t last_eg_state;
+#endif
+} OPL_SLOT;
 
-/* Channel */
-typedef struct __OPL_CH {
-
-  int32_t key_status ;
-  int32_t alg ;
-  OPL_SLOT *mod, *car ;
-
-} OPL_CH ;
-
-/* OPL */
 typedef struct __OPL {
+  OPL_ADPCM *adpcm;
+  uint8_t patch_number[9];
+  uint32_t clk;
+  uint32_t rate;
 
-  uint32_t realstep ;
-  uint32_t opltime ;
-  uint32_t oplstep ;
+  uint8_t chip_mode;
 
-  ADPCM *adpcm;
+  uint32_t adr;
 
-  uint32_t adr ;
+  uint32_t inp_step;
+  uint32_t out_step;
+  uint32_t out_time;
 
-  int32_t out ;
+  uint8_t reg[0x100];
+  uint8_t test_flag;
+  uint32_t slot_key_status;
+  uint8_t rhythm_mode;
 
-  /* Register */
-  uint8_t reg[0xff] ; 
-  int32_t slot_on_flag[18] ;
+  uint32_t eg_counter;
 
-  /* Rythm Mode : 0 = OFF, 1 = ON */
-  int32_t rhythm_mode ;
+  uint32_t pm_phase;
+  uint32_t pm_dphase;
 
-  /* Pitch Modulator */
-  int32_t pm_mode ;
-  uint32_t pm_phase ;
+  int32_t am_phase;
+  int32_t am_dphase;
+  uint8_t lfo_am;
 
-  /* Amp Modulator */
-  int32_t am_mode ;
-  uint32_t am_phase ;
+  uint32_t noise_seed;
+  uint8_t noise;
+  uint8_t short_noise;
 
-  /* Noise Generator */
-  uint32_t noise_seed ;
+  OPL_SLOT slot[18];
+  uint8_t ch_alg[9]; // alg for each channels
 
-  /* Channel & Slot */
-  OPL_CH *ch[9] ;
-  OPL_SLOT *slot[18] ;
+  uint8_t pan[16];
+  float pan_fine[16][2];
 
-  uint32_t mask ;
+  uint32_t mask;
+  uint8_t am_mode;
+  uint8_t pm_mode;
 
-  /* Channel output 0-8:FM 9-13:RHYTHM(not implemented) 14:ADPCM */
+  /* channel output */
+  /* 0..8:tone 9:bd 10:hh 11:sd 12:tom 13:cym 14:adpcm */
   int16_t ch_out[15];
 
-} OPL ;
+  int16_t mix_out[2];
 
-/* Mask */
-#define OPL_MASK_CH(x) (1<<(x))
-#define OPL_MASK_HH (1<<9)
-#define OPL_MASK_CYM (1<<10)
-#define OPL_MASK_TOM (1<<11)
-#define OPL_MASK_SD (1<<12)
-#define OPL_MASK_BD (1<<13)
-#define OPL_MASK_RHYTHM ( OPLL_MASK_HH | OPLL_MASK_CYM | OPLL_MASK_TOM | OPLL_MASK_SD | OPLL_MASK_BD )
-#define OPL_MASK_PCM (1<<14)
+  OPL_RateConv *conv;
+} OPL;
 
-OPL *OPL_new(uint32_t clk, uint32_t rate) ;
-void OPL_set_rate(OPL *opl, uint32_t rate) ;
-void OPL_reset(OPL *opl) ;
-void OPL_delete(OPL *opl) ;
-void OPL_writeReg(OPL *opl, uint32_t reg, uint32_t val) ;
-int16_t OPL_calc(OPL *opl) ;
-void OPL_writeIO(OPL *opl, uint32_t adr, uint32_t val) ;
-uint32_t OPL_readIO(OPL *opl) ;
-uint32_t OPL_status(OPL *opl) ;
-uint32_t OPL_setMask(OPL *opl, uint32_t mask);
-uint32_t OPL_toggleMask(OPL *opl, uint32_t mask);
+OPL *OPL_new(uint32_t clk, uint32_t rate);
+void OPL_delete(OPL *);
+
+void OPL_reset(OPL *);
+
+/** 
+ * Set output wave sampling rate. 
+ * @param rate sampling rate. If clock / 72 (typically 49716 or 49715 at 3.58MHz) is set, the internal rate converter is disabled.
+ */
+void OPL_setRate(OPL *opl, uint32_t rate);
+
+/** 
+ * Set internal calcuration quality. Currently no effects, just for compatibility.
+ * >= v1.0.0 always synthesizes internal output at clock/72 Hz.
+ */
+void OPL_setQuality(OPL *opl, uint8_t q);
+
+/** 
+ * Set pan pot (extra function - not YM2413 chip feature)
+ * @param ch 0..8:tone 9:bd 10:hh 11:sd 12:tom 13:cym 14,15:reserved
+ * @param pan 0:mute 1:right 2:left 3:center 
+ * ```
+ * pan: 76543210
+ *            |+- bit 1: enable Left output
+ *            +-- bit 0: enable Right output
+ * ```
+ */
+void OPL_setPan(OPL *opl, uint32_t ch, uint8_t pan);
+
+/**
+ * Set fine-grained panning
+ * @param ch 0..8:tone 9:bd 10:hh 11:sd 12:tom 13:cym 14,15:reserved
+ * @param pan output strength of left/right channel. 
+ *            pan[0]: left, pan[1]: right. pan[0]=pan[1]=1.0f for center.
+ */
+void OPL_setPanFine(OPL *opl, uint32_t ch, float pan[2]);
+
+void OPL_writeIO(OPL *opl, uint32_t reg, uint8_t val);
+void OPL_writeReg(OPL *opl, uint32_t reg, uint8_t val);
+
+/**
+ * Calculate sample
+ */
+int16_t OPL_calc(OPL *opl);
+
+/**
+ * Calulate stereo sample
+ */
+void OPL_calcStereo(OPL *opl, int32_t out[2]);
+
+/** 
+ *  Set channel mask 
+ *  @param mask mask flag: OPL_MASK_* can be used.
+ *  - bit 0..8: mask for ch 1 to 9 (OPL_MASK_CH(i))
+ *  - bit 9: mask for Hi-Hat (OPL_MASK_HH)
+ *  - bit 10: mask for Top-Cym (OPL_MASK_CYM)
+ *  - bit 11: mask for Tom (OPL_MASK_TOM)
+ *  - bit 12: mask for Snare Drum (OPL_MASK_SD)
+ *  - bit 13: mask for Bass Drum (OPL_MASK_BD)
+ */
+uint32_t OPL_setMask(OPL *, uint32_t mask);
+
+/**
+ * Toggler channel mask flag
+ */
+uint32_t OPL_toggleMask(OPL *, uint32_t mask);
+
+/* for compatibility */
+#define OPL_set_rate OPL_setRate
+#define OPL_set_quality OPL_setQuality
+#define OPL_set_pan OPL_setPan
+#define OPL_set_pan_fine OPL_setPanFine
+#define OPL_calc_stereo OPL_calcStereo
 
 #ifdef __cplusplus
 }
 #endif
 
-
-
 #endif
-
-
-
-
-
-
-
-
-
-
-
