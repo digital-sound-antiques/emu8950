@@ -696,19 +696,19 @@ static void update_short_noise(OPL *opl) {
 static INLINE void calc_phase(OPL_SLOT *slot, int32_t pm_phase, uint8_t pm_mode, uint8_t reset) {
   int8_t pm;
   if (slot->patch->PM) {
-    pm = pm_table[(slot->fnum >> 6) & 7][pm_phase >> (PM_DP_BITS - PM_PG_BITS)];
-    pm <<= (pm_mode ? 1 : 0);
+    pm = pm_table[(slot->fnum >> 7) & 7][pm_phase >> (PM_DP_BITS - PM_PG_BITS)];
+    pm >>= (pm_mode ? 0 : 1);
   }
 
   if (reset) {
     slot->pg_phase = 0;
   }
-  slot->pg_phase += (((slot->fnum & 0x3ff) * 2 + pm) * ml_table[slot->patch->ML]) << slot->blk >> 2;
+  slot->pg_phase += (((slot->fnum & 0x3ff) + pm) * ml_table[slot->patch->ML]) << slot->blk >> 1;
   slot->pg_phase &= (DP_WIDTH - 1);
   slot->pg_out = slot->pg_phase >> DP_BASE_BITS;
 }
 
-static INLINE uint8_t lookup_env_step(OPL_SLOT *slot, uint32_t counter) {
+static INLINE uint8_t lookup_attack_step(OPL_SLOT *slot, uint32_t counter) {
   int index = (counter >> slot->eg_shift) & 7;
   switch (slot->eg_rate_h) {
   case 13:
@@ -723,6 +723,22 @@ static INLINE uint8_t lookup_env_step(OPL_SLOT *slot, uint32_t counter) {
   }
 }
 
+static INLINE uint8_t lookup_decay_step(OPL_SLOT *slot, uint32_t counter) {
+  int index = (counter >> slot->eg_shift) & 7;
+  switch (slot->eg_rate_h) {
+  case 0:
+    return 0;
+  case 13:
+    return eg_step_tables_fast[slot->eg_rate_l][index];
+  case 14:
+    return eg_step_tables_fast[slot->eg_rate_l][index] << 1;
+  case 15:
+    return 4;
+  default:
+    return eg_step_tables[slot->eg_rate_l][index];
+  }
+}
+
 static INLINE void calc_envelope(OPL_SLOT *slot, uint16_t eg_counter, uint8_t test) {
 
   uint16_t mask = (1 << slot->eg_shift) - 1;
@@ -730,12 +746,12 @@ static INLINE void calc_envelope(OPL_SLOT *slot, uint16_t eg_counter, uint8_t te
 
   if (slot->eg_state == ATTACK) {
     if (0 < slot->eg_out && slot->eg_rate_h > 0 && (eg_counter & mask) == 0) {
-      s = lookup_env_step(slot, eg_counter);
+      s = lookup_attack_step(slot, eg_counter);
       slot->eg_out += (~slot->eg_out * s) >> 3;
     }
   } else {
     if (slot->eg_rate_h > 0 && (eg_counter & mask) == 0) {
-      slot->eg_out = min(EG_MUTE, slot->eg_out + lookup_env_step(slot, eg_counter));
+      slot->eg_out = min(EG_MUTE, slot->eg_out + lookup_decay_step(slot, eg_counter));
     }
   }
 
@@ -792,7 +808,7 @@ static INLINE int16_t to_linear(uint16_t h, OPL_SLOT *slot, int16_t am) {
   if (slot->eg_out >= EG_MAX)
     return 0;
 
-  att = min(EG_MAX, (slot->eg_out + slot->tll + am)) << 3;
+  att = min(EG_MUTE, (slot->eg_out + slot->tll + am)) << 3;
   return lookup_exp_table(h + att);
 }
 
