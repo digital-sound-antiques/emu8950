@@ -694,7 +694,7 @@ static void update_short_noise(OPL *opl) {
 }
 
 static INLINE void calc_phase(OPL_SLOT *slot, int32_t pm_phase, uint8_t pm_mode, uint8_t reset) {
-  int8_t pm;
+  int8_t pm = 0;
   if (slot->patch->PM) {
     pm = pm_table[(slot->fnum >> 7) & 7][pm_phase >> (PM_DP_BITS - PM_PG_BITS)];
     pm >>= (pm_mode ? 0 : 1);
@@ -988,7 +988,6 @@ INLINE static void mix_output_stereo(OPL *opl) {
 
 OPL *OPL_new(uint32_t clk, uint32_t rate) {
   OPL *opl;
-  int i;
 
   if (!table_initialized) {
     initializeTables();

@@ -41,7 +41,7 @@ int16_t OPL_RateConv_getData(OPL_RateConv *conv, int ch);
 void OPL_RateConv_delete(OPL_RateConv *conv);
 
 /* slot */
-typedef struct __OPLL_SLOT {
+typedef struct __OPL_SLOT {
   uint8_t number;
 
   /* type flags:
