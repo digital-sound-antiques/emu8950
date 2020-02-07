@@ -12,7 +12,7 @@ extern "C" {
 
 /* voice data */
 typedef struct __OPL_PATCH {
-  uint8_t TL, FB, EG, ML, AR, DR, SL, RR, KR, KL, AM, PM, WF;
+  uint8_t TL, FB, EG, ML, AR, DR, SL, RR, KR, KL, AM, PM, WS;
 } OPL_PATCH;
 
 /* mask */
@@ -87,7 +87,7 @@ typedef struct __OPL {
   uint32_t clk;
   uint32_t rate;
 
-  uint8_t chip_mode;
+  uint8_t chip_type;
 
   uint32_t adr;
 
@@ -149,6 +149,12 @@ void OPL_setRate(OPL *opl, uint32_t rate);
  * >= v1.0.0 always synthesizes internal output at clock/72 Hz.
  */
 void OPL_setQuality(OPL *opl, uint8_t q);
+
+/**
+ * Set OPL chip type.
+ * @param type 0:Y8950, 1:YM3526, 2:YM3812
+ */
+void OPL_setChipType(OPL *opl, uint8_t type);
 
 /** 
  * Set pan pot (extra function - not YM2413 chip feature)

@@ -21,7 +21,8 @@
 
 #define _PI_ 3.14159265358979323846264338327950288
 
-typedef enum __OPL_EG_STATE { ATTACK, DECAY, SUSTAIN, RELEASE, UNKNOWN } OPL_EG_STATE;
+enum __OPL_EG_STATE { ATTACK, DECAY, SUSTAIN, RELEASE, UNKNOWN };
+enum __OPL_TYPE { TYPE_Y8950 = 0, TYPE_YM3526, TYPE_YM3812, TYPE_MAX };
 
 /* phase increment counter */
 #define DP_BITS 20
@@ -378,9 +379,9 @@ static void initializeTables() {
 #if OPL_DEBUG
 static void _debug_print_patch(OPL_SLOT *slot) {
   OPL_PATCH *p = slot->patch;
-  printf("[slot#%d am:%d pm:%d eg:%d kr:%d ml:%d kl:%d tl:%d wf:%d fb:%d A:%d D:%d S:%d R:%d]\n", slot->number, //
+  printf("[slot#%d am:%d pm:%d eg:%d kr:%d ml:%d kl:%d tl:%d ws:%d fb:%d A:%d D:%d S:%d R:%d]\n", slot->number, //
          p->AM, p->PM, p->EG, p->KR, p->ML,                                                                     //
-         p->KL, p->TL, p->WF, p->FB,                                                                            //
+         p->KL, p->TL, p->WS, p->FB,                                                                            //
          p->AR, p->DR, p->SL, p->RR);
 }
 
@@ -426,7 +427,7 @@ static INLINE int get_parameter_rate(OPL_SLOT *slot) {
 }
 
 enum SLOT_UPDATE_FLAG {
-  UPDATE_WF = 1,
+  UPDATE_WS = 1,
   UPDATE_TLL = 2,
   UPDATE_RKS = 4,
   UPDATE_EG = 8,
@@ -437,8 +438,8 @@ static INLINE void request_update(OPL_SLOT *slot, int flag) { slot->update_reque
 
 static void commit_slot_update(OPL_SLOT *slot) {
 
-  if (slot->update_requests & UPDATE_WF) {
-    slot->wave_table = wave_table_map[slot->patch->WF & 3];
+  if (slot->update_requests & UPDATE_WS) {
+    slot->wave_table = wave_table_map[slot->patch->WS & 3];
   }
 
   if (slot->update_requests & UPDATE_TLL) {
@@ -1083,7 +1084,11 @@ void OPL_setRate(OPL *opl, uint32_t rate) {
 
 void OPL_setQuality(OPL *opl, uint8_t q) {}
 
-void OPL_setChipMode(OPL *opl, uint8_t mode) { opl->chip_mode = mode; }
+void OPL_setChipType(OPL *opl, uint8_t type) {
+  if (type < TYPE_MAX) {
+    opl->chip_type = type;
+  }
+}
 
 void OPL_writeIO(OPL *opl, uint32_t adr, uint8_t val) {
   if (adr & 1)
@@ -1163,7 +1168,9 @@ void OPL_writeReg(OPL *opl, uint32_t reg, uint8_t data) {
 
   if (0x07 <= reg && reg <= 0x12) {
 
-    OPL_ADPCM_writeReg(opl->adpcm, reg, data);
+    if (opl->chip_type == TYPE_Y8950) {
+      OPL_ADPCM_writeReg(opl->adpcm, reg, data);
+    }
 
   } else if (0x20 <= reg && reg < 0x40) {
 
@@ -1232,10 +1239,12 @@ void OPL_writeReg(OPL *opl, uint32_t reg, uint8_t data) {
     opl->pm_mode = (data >> 6) & 1;
 
   } else if (0xe0 <= reg && reg < 0x100) {
-    s = stbl[reg - 0xe0];
-    if (s >= 0) {
-      opl->slot[s].patch->WF = data & 3;
-      request_update(&(opl->slot[s]), UPDATE_WF);
+    if (opl->chip_type == TYPE_YM3812 && (opl->reg[0x01] & 0x20)) {
+      s = stbl[reg - 0xe0];
+      if (s >= 0) {
+        opl->slot[s].patch->WS = data & 3;
+        request_update(&(opl->slot[s]), UPDATE_WS);
+      }
     }
   }
 }
