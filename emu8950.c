@@ -21,7 +21,7 @@
 
 #define _PI_ 3.14159265358979323846264338327950288
 
-typedef enum __OPL_EG_STATE { ATTACK, DECAY, SUSTAIN, RELEASE, DAMP, UNKNOWN } OPL_EG_STATE;
+typedef enum __OPL_EG_STATE { ATTACK, DECAY, SUSTAIN, RELEASE, UNKNOWN } OPL_EG_STATE;
 
 /* phase increment counter */
 #define DP_BITS 20
@@ -30,9 +30,9 @@ typedef enum __OPL_EG_STATE { ATTACK, DECAY, SUSTAIN, RELEASE, DAMP, UNKNOWN } O
 
 /* dynamic range of envelope output */
 #define EG_STEP 0.1875
-#define EG_BITS 8
+#define EG_BITS 9
 #define EG_MUTE ((1 << EG_BITS) - 1)
-#define EG_MAX (EG_MUTE & 0xf8)
+#define EG_MAX (0x1f0) // 93dB
 
 /* dynamic range of total level */
 #define TL_STEP 0.75
@@ -132,12 +132,17 @@ static uint8_t am_table[210] = {0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,  
                                 1,  1,  1,  1,  1,  1,  1,  1,  0,  0,  0,  0,  0,  0,  0};
 
 /* envelope decay increment step table */
-/* based on andete's research */
 static uint8_t eg_step_tables[4][8] = {
     {0, 1, 0, 1, 0, 1, 0, 1},
     {0, 1, 0, 1, 1, 1, 0, 1},
     {0, 1, 1, 1, 0, 1, 1, 1},
     {0, 1, 1, 1, 1, 1, 1, 1},
+};
+static uint8_t eg_step_tables_fast[4][8] = {
+    {1, 1, 1, 1, 1, 1, 1, 1},
+    {1, 1, 1, 2, 1, 1, 1, 2},
+    {1, 2, 1, 2, 1, 2, 1, 2},
+    {1, 2, 2, 2, 1, 2, 2, 2},
 };
 
 static uint32_t ml_table[16] = {1,     1 * 2, 2 * 2,  3 * 2,  4 * 2,  5 * 2,  6 * 2,  7 * 2,
@@ -313,12 +318,13 @@ static void makeSinTable(void) {
 static void makeTllTable(void) {
 
   int32_t tmp;
-  int32_t fnum, block, TL, KL;
+  int32_t fnum, block, TL, KL, kx;
 
   for (fnum = 0; fnum < 16; fnum++) {
     for (block = 0; block < 8; block++) {
       for (TL = 0; TL < 64; TL++) {
         for (KL = 0; KL < 4; KL++) {
+          kx = ((KL & 1) << 1) | ((KL >> 1) & 1);
           if (KL == 0) {
             tll_table[(block << 4) | fnum][TL][KL] = TL2EG(TL);
           } else {
@@ -326,7 +332,7 @@ static void makeTllTable(void) {
             if (tmp <= 0)
               tll_table[(block << 4) | fnum][TL][KL] = TL2EG(TL);
             else
-              tll_table[(block << 4) | fnum][TL][KL] = (uint32_t)((tmp >> (3 - KL)) / EG_STEP) + TL2EG(TL);
+              tll_table[(block << 4) | fnum][TL][KL] = (uint32_t)((tmp >> (3 - kx)) / EG_STEP) + TL2EG(TL);
           }
         }
       }
@@ -414,8 +420,6 @@ static INLINE int get_parameter_rate(OPL_SLOT *slot) {
     return slot->patch->EG ? 0 : slot->patch->RR;
   case RELEASE:
     return slot->patch->RR;
-  case DAMP:
-    return DAMPER_RATE;
   default:
     return 0;
   }
@@ -500,7 +504,15 @@ static void reset_slot(OPL_SLOT *slot, int number) {
 
 static INLINE void slotOn(OPL *opl, int i) {
   OPL_SLOT *slot = &opl->slot[i];
-  slot->eg_state = DAMP;
+  if (min(15, slot->patch->AR + (slot->rks >> 2)) == 15) {
+    slot->eg_state = DECAY;
+    slot->eg_out = 0;
+  } else {
+    slot->eg_state = ATTACK;
+  }
+  if (!slot->pg_keep) {
+    slot->pg_phase = 0;
+  }
   request_update(slot, UPDATE_EG);
 }
 
@@ -583,23 +595,25 @@ static INLINE void update_rhythm_mode(OPL *opl) {
   const uint8_t new_rhythm_mode = (opl->reg[0xbd] >> 5) & 1;
   const uint32_t slot_key_status = opl->slot_key_status;
 
-  if (opl->patch_number[6] & 0x10) {
+  if (opl->in_rhythm[6]) {
     if (!(BIT(slot_key_status, SLOT_BD2) | new_rhythm_mode)) {
+      opl->in_rhythm[6] = 0;
       opl->slot[SLOT_BD1].eg_state = RELEASE;
       opl->slot[SLOT_BD1].eg_out = EG_MUTE;
       opl->slot[SLOT_BD2].eg_state = RELEASE;
       opl->slot[SLOT_BD2].eg_out = EG_MUTE;
     }
   } else if (new_rhythm_mode) {
-    opl->patch_number[6] = 16;
+    opl->in_rhythm[6] = 1;
     opl->slot[SLOT_BD1].eg_state = RELEASE;
     opl->slot[SLOT_BD1].eg_out = EG_MUTE;
     opl->slot[SLOT_BD2].eg_state = RELEASE;
     opl->slot[SLOT_BD2].eg_out = EG_MUTE;
   }
 
-  if (opl->patch_number[7] & 0x10) {
+  if (opl->in_rhythm[7]) {
     if (!((BIT(slot_key_status, SLOT_HH) && BIT(slot_key_status, SLOT_SD)) | new_rhythm_mode)) {
+      opl->in_rhythm[7] = 0;
       opl->slot[SLOT_HH].type = 0;
       opl->slot[SLOT_HH].pg_keep = 0;
       opl->slot[SLOT_HH].eg_state = RELEASE;
@@ -609,7 +623,7 @@ static INLINE void update_rhythm_mode(OPL *opl) {
       opl->slot[SLOT_SD].eg_out = EG_MUTE;
     }
   } else if (new_rhythm_mode) {
-    opl->patch_number[7] = 17;
+    opl->in_rhythm[7] = 1;
     opl->slot[SLOT_HH].type = 3;
     opl->slot[SLOT_HH].pg_keep = 1;
     opl->slot[SLOT_HH].eg_state = RELEASE;
@@ -619,8 +633,9 @@ static INLINE void update_rhythm_mode(OPL *opl) {
     opl->slot[SLOT_SD].eg_out = EG_MUTE;
   }
 
-  if (opl->patch_number[8] & 0x10) {
+  if (opl->in_rhythm[8]) {
     if (!((BIT(slot_key_status, SLOT_CYM) && BIT(slot_key_status, SLOT_TOM)) | new_rhythm_mode)) {
+      opl->in_rhythm[8] = 0;
       opl->slot[SLOT_TOM].type = 0;
       opl->slot[SLOT_TOM].eg_state = RELEASE;
       opl->slot[SLOT_TOM].eg_out = EG_MUTE;
@@ -630,7 +645,7 @@ static INLINE void update_rhythm_mode(OPL *opl) {
       opl->slot[SLOT_CYM].eg_out = EG_MUTE;
     }
   } else if (new_rhythm_mode) {
-    opl->patch_number[8] = 18;
+    opl->in_rhythm[8] = 1;
     opl->slot[SLOT_TOM].type = 3;
     opl->slot[SLOT_TOM].eg_state = RELEASE;
     opl->slot[SLOT_TOM].eg_out = EG_MUTE;
@@ -674,13 +689,14 @@ static void update_short_noise(OPL *opl) {
   const uint8_t c_bit3 = BIT(pg_cym, PG_BITS - 7);
   const uint8_t c_bit5 = BIT(pg_cym, PG_BITS - 5);
 
-  opl->short_noise = (h_bit2 ^ h_bit7) | h_bit3 /*(h_bit3 ^ c_bit5)*/ | (c_bit3 ^ c_bit5);
+  opl->short_noise = (h_bit2 ^ h_bit7) | (h_bit3 ^ c_bit5) | (c_bit3 ^ c_bit5);
 }
 
 static INLINE void calc_phase(OPL_SLOT *slot, int32_t pm_phase, uint8_t pm_mode, uint8_t reset) {
-  int8_t pm = 0;
+  int8_t pm;
   if (slot->patch->PM) {
-    pm = pm_table[(slot->fnum >> 6) & 7][pm_phase >> (PM_DP_BITS - PM_PG_BITS)] >> (pm_mode ? 0 : 1);
+    pm = pm_table[(slot->fnum >> 6) & 7][pm_phase >> (PM_DP_BITS - PM_PG_BITS)];
+    pm <<= (pm_mode ? 1 : 0);
   }
 
   if (reset) {
@@ -691,86 +707,38 @@ static INLINE void calc_phase(OPL_SLOT *slot, int32_t pm_phase, uint8_t pm_mode,
   slot->pg_out = slot->pg_phase >> DP_BASE_BITS;
 }
 
-static INLINE uint8_t lookup_attack_step(OPL_SLOT *slot, uint32_t counter) {
-  int index;
+static INLINE uint8_t lookup_env_step(OPL_SLOT *slot, uint32_t counter) {
+  int index = (counter >> slot->eg_shift) & 7;
   switch (slot->eg_rate_h) {
-  case 12:
-    index = (counter & 0xc) >> 1;
-    return 4 - eg_step_tables[slot->eg_rate_l][index];
   case 13:
-    index = (counter & 0xc) >> 1;
-    return 3 - eg_step_tables[slot->eg_rate_l][index];
+    return eg_step_tables_fast[slot->eg_rate_l][index];
   case 14:
-    index = (counter & 0xc) >> 1;
-    return 2 - eg_step_tables[slot->eg_rate_l][index];
+    return eg_step_tables_fast[slot->eg_rate_l][index] << 1;
   case 0:
   case 15:
     return 0;
   default:
-    index = counter >> slot->eg_shift;
-    return eg_step_tables[slot->eg_rate_l][index & 7] ? 4 : 0;
-  }
-}
-
-static INLINE uint8_t lookup_decay_step(OPL_SLOT *slot, uint32_t counter) {
-  int index;
-  switch (slot->eg_rate_h) {
-  case 0:
-    return 0;
-  case 13:
-    index = ((counter & 0xc) >> 1) | (counter & 1);
     return eg_step_tables[slot->eg_rate_l][index];
-  case 14:
-    index = ((counter & 0xc) >> 1);
-    return eg_step_tables[slot->eg_rate_l][index] + 1;
-  case 15:
-    return 2;
-  default:
-    index = counter >> slot->eg_shift;
-    return eg_step_tables[slot->eg_rate_l][index & 7];
   }
 }
 
-static INLINE void start_envelope(OPL_SLOT *slot) {
-  if (min(15, slot->patch->AR + (slot->rks >> 2)) == 15) {
-    slot->eg_state = DECAY;
-    slot->eg_out = 0;
-  } else {
-    slot->eg_state = ATTACK;
-    slot->eg_out = EG_MUTE;
-  }
-  if (!slot->pg_keep) {
-    slot->pg_phase = 0;
-  }
-  request_update(slot, UPDATE_EG);
-}
+static INLINE void calc_envelope(OPL_SLOT *slot, uint16_t eg_counter, uint8_t test) {
 
-static INLINE void calc_envelope(OPL_SLOT *slot, OPL_SLOT *buddy, uint16_t eg_counter, uint8_t test) {
-
-  uint32_t mask = (1 << slot->eg_shift) - 1;
+  uint16_t mask = (1 << slot->eg_shift) - 1;
   uint8_t s;
 
   if (slot->eg_state == ATTACK) {
-    if (0 < slot->eg_out && slot->eg_rate_h > 0 && (eg_counter & mask & ~3) == 0) {
-      s = lookup_attack_step(slot, eg_counter);
+    if (0 < slot->eg_out && slot->eg_rate_h > 0 && (eg_counter & mask) == 0) {
+      s = lookup_env_step(slot, eg_counter);
       slot->eg_out += (~slot->eg_out * s) >> 3;
     }
   } else {
     if (slot->eg_rate_h > 0 && (eg_counter & mask) == 0) {
-      slot->eg_out = min(EG_MUTE, slot->eg_out + lookup_decay_step(slot, eg_counter));
+      slot->eg_out = min(EG_MUTE, slot->eg_out + lookup_env_step(slot, eg_counter));
     }
   }
 
   switch (slot->eg_state) {
-  case DAMP:
-    if (slot->eg_out >= EG_MAX) {
-      start_envelope(slot);
-      if (buddy && !buddy->pg_keep) {
-        buddy->pg_phase = 0;
-      }
-    }
-    break;
-
   case ATTACK:
     if (slot->eg_out == 0) {
       slot->eg_state = DECAY;
@@ -802,22 +770,15 @@ static void update_slots(OPL *opl) {
 
   for (i = 0; i < 18; i++) {
     OPL_SLOT *slot = &opl->slot[i];
-    OPL_SLOT *buddy = NULL;
-    if (slot->type == 0) {
-      buddy = &opl->slot[i + 1];
-    }
-    if (slot->type == 1) {
-      buddy = &opl->slot[i - 1];
-    }
     if (slot->update_requests) {
       commit_slot_update(slot);
     }
-    calc_envelope(slot, buddy, opl->eg_counter, opl->test_flag & 1);
+    calc_envelope(slot, opl->eg_counter, opl->test_flag & 1);
     calc_phase(slot, opl->pm_phase, opl->pm_mode, opl->test_flag & 4);
   }
 }
 
-/* output: -4095...4095 */
+/* input: 0..8191 output: -4095..4095 */
 static INLINE int16_t lookup_exp_table(uint16_t i) {
   /* from andete's expressoin */
   int16_t t = (exp_table[(i & 0xff) ^ 0xff] + 1024);
@@ -830,7 +791,7 @@ static INLINE int16_t to_linear(uint16_t h, OPL_SLOT *slot, int16_t am) {
   if (slot->eg_out >= EG_MAX)
     return 0;
 
-  att = min(EG_MUTE, (slot->eg_out + slot->tll + am)) << 3;
+  att = min(EG_MAX, (slot->eg_out + slot->tll + am)) << 3;
   return lookup_exp_table(h + att);
 }
 
@@ -929,7 +890,7 @@ static void update_output(OPL *opl) {
   }
 
   /* CH7 */
-  if (opl->patch_number[6] <= 15) {
+  if (!opl->in_rhythm[6]) {
     if (!(opl->mask & OPL_MASK_CH(6))) {
       out[6] = _MO(calc_fm(opl, 6));
     }
@@ -940,7 +901,7 @@ static void update_output(OPL *opl) {
   }
 
   /* CH8 */
-  if (opl->patch_number[7] <= 15) {
+  if (!opl->in_rhythm[7]) {
     if (!(opl->mask & OPL_MASK_CH(7))) {
       out[7] = _MO(calc_fm(opl, 7));
     }
@@ -954,7 +915,7 @@ static void update_output(OPL *opl) {
   }
 
   /* CH9 */
-  if (opl->patch_number[8] <= 15) {
+  if (!opl->in_rhythm[8]) {
     if (!(opl->mask & OPL_MASK_CH(8))) {
       out[8] = _MO(calc_fm(opl, 8));
     }
@@ -968,7 +929,9 @@ static void update_output(OPL *opl) {
   }
 
   /* ADPCM */
-  out[14] = OPL_ADPCM_calc(opl->adpcm);
+  if (!(opl->mask & OPL_MASK_ADPCM)) {
+    out[14] = OPL_ADPCM_calc(opl->adpcm);
+  }
 }
 
 INLINE static void mix_output(OPL *opl) {
@@ -1090,7 +1053,7 @@ void OPL_reset(OPL *opl) {
   }
 
   for (i = 0; i < 9; i++) {
-    opl->patch_number[i] = 0;
+    opl->in_rhythm[i] = 0;
     opl->ch_alg[i] = 0;
   }
 
@@ -1277,6 +1240,6 @@ void OPL_writeReg(OPL *opl, uint32_t reg, uint8_t data) {
   }
 }
 
-uint32_t OPL_readIO(OPL *opl) { return opl->reg[opl->adr]; }
+uint8_t OPL_readIO(OPL *opl) { return opl->reg[opl->adr]; }
 
-uint32_t OPL_status(OPL *opl) { return OPL_ADPCM_status(opl->adpcm); }
+uint8_t OPL_status(OPL *opl) { return OPL_ADPCM_status(opl->adpcm); }

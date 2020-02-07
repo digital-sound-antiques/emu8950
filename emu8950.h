@@ -17,11 +17,12 @@ typedef struct __OPL_PATCH {
 
 /* mask */
 #define OPL_MASK_CH(x) (1 << (x))
-#define OPL_MASK_HH (1 << (9))
-#define OPL_MASK_CYM (1 << (10))
-#define OPL_MASK_TOM (1 << (11))
-#define OPL_MASK_SD (1 << (12))
-#define OPL_MASK_BD (1 << (13))
+#define OPL_MASK_HH (1 << 9)
+#define OPL_MASK_CYM (1 << 10)
+#define OPL_MASK_TOM (1 << 11)
+#define OPL_MASK_SD (1 << 12)
+#define OPL_MASK_BD (1 << 13)
+#define OPL_MASK_ADPCM (1 << 14)
 #define OPL_MASK_RHYTHM (OPL_MASK_HH | OPL_MASK_CYM | OPL_MASK_TOM | OPL_MASK_SD | OPL_MASK_BD)
 
 /* rate conveter */
@@ -72,7 +73,7 @@ typedef struct __OPLL_SLOT {
   uint8_t eg_rate_h;        /* eg speed rate high 4bits */
   uint8_t eg_rate_l;        /* eg speed rate low 2bits */
   uint32_t eg_shift;        /* shift for eg global counter, controls envelope speed */
-  int32_t eg_out;           /* eg output */
+  int16_t eg_out;           /* eg output */
 
   uint32_t update_requests; /* flags to debounce update */
 
@@ -83,7 +84,6 @@ typedef struct __OPLL_SLOT {
 
 typedef struct __OPL {
   OPL_ADPCM *adpcm;
-  uint8_t patch_number[9];
   uint32_t clk;
   uint32_t rate;
 
@@ -99,6 +99,7 @@ typedef struct __OPL {
   uint8_t test_flag;
   uint32_t slot_key_status;
   uint8_t rhythm_mode;
+  uint8_t in_rhythm[9];
 
   uint32_t eg_counter;
 
@@ -198,6 +199,9 @@ uint32_t OPL_setMask(OPL *, uint32_t mask);
  * Toggler channel mask flag
  */
 uint32_t OPL_toggleMask(OPL *, uint32_t mask);
+
+uint8_t OPL_readIO(OPL *opl);
+uint8_t OPL_status(OPL *opl);
 
 /* for compatibility */
 #define OPL_set_rate OPL_setRate
