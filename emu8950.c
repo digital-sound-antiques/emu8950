@@ -1,5 +1,5 @@
 /**
- * emu8950 v0.9.0
+ * emu8950 v1.0.0
  * https://github.com/digital-sound-antiques/emu8950
  * Copyright (C) 2001-2020 Mitsutaka Okazaki
  */
@@ -946,7 +946,7 @@ static void update_output(OPL *opl) {
   }
 
   /* ADPCM */
-  if (!(opl->mask & OPL_MASK_ADPCM)) {
+  if (opl->adpcm != NULL && !(opl->mask & OPL_MASK_ADPCM)) {
     out[14] = OPL_ADPCM_calc(opl->adpcm);
   }
 }
@@ -997,7 +997,7 @@ OPL *OPL_new(uint32_t clk, uint32_t rate) {
   if (opl == NULL)
     return NULL;
 
-  opl->adpcm = OPL_ADPCM_new(clk, clk / 72);
+  opl->adpcm = NULL;
   opl->clk = clk;
   opl->rate = rate;
   opl->mask = 0;
@@ -1041,6 +1041,22 @@ static void reset_rate_conversion_params(OPL *opl) {
 
   if (opl->conv) {
     OPL_RateConv_reset(opl->conv);
+  }
+}
+
+void refresh_adpcm_object(OPL *opl) {
+  if (opl->chip_type == TYPE_Y8950) {
+    if (opl->adpcm == NULL) {
+      opl->adpcm = OPL_ADPCM_new(opl->clk, opl->clk / 72);
+    }
+  } else {
+    if (opl->adpcm != NULL) {
+      free(opl->adpcm);
+      opl->adpcm = NULL;
+    }
+  }
+  if (opl->adpcm != NULL) {
+    OPL_ADPCM_reset(opl->adpcm);
   }
 }
 
@@ -1088,13 +1104,12 @@ void OPL_reset(OPL *opl) {
     opl->ch_out[i] = 0;
   }
 
-  OPL_ADPCM_reset(opl->adpcm);
+  refresh_adpcm_object(opl);
 }
 
 void OPL_setRate(OPL *opl, uint32_t rate) {
   opl->rate = rate;
   reset_rate_conversion_params(opl);
-  OPL_ADPCM_setRate(opl->adpcm, opl->clk / 72);
 }
 
 void OPL_setQuality(OPL *opl, uint8_t q) {}
@@ -1102,6 +1117,7 @@ void OPL_setQuality(OPL *opl, uint8_t q) {}
 void OPL_setChipType(OPL *opl, uint8_t type) {
   if (type < TYPE_MAX) {
     opl->chip_type = type;
+    refresh_adpcm_object(opl);
   }
 }
 
@@ -1181,9 +1197,13 @@ void OPL_writeReg(OPL *opl, uint32_t reg, uint8_t data) {
 
   opl->reg[reg] = data;
 
-  if (0x07 <= reg && reg <= 0x12) {
+  if (reg == 0x01) {
 
-    if (opl->chip_type == TYPE_Y8950) {
+    opl->test_flag = data;
+
+  } else if (0x07 <= reg && reg <= 0x12) {
+
+    if (opl->adpcm != NULL && opl->chip_type == TYPE_Y8950) {
       OPL_ADPCM_writeReg(opl->adpcm, reg, data);
     }
 
@@ -1266,12 +1286,19 @@ void OPL_writeReg(OPL *opl, uint32_t reg, uint8_t data) {
 
 uint8_t OPL_readIO(OPL *opl) { return opl->reg[opl->adr]; }
 
-uint8_t OPL_status(OPL *opl) { return OPL_ADPCM_status(opl->adpcm); }
+uint8_t OPL_status(OPL *opl) {
+  if (opl->adpcm) {
+    return OPL_ADPCM_status(opl->adpcm);
+  }
+  return 0;
+}
 
 void OPL_writeADPCMData(OPL *opl, uint8_t type, uint32_t start, uint32_t length, const uint8_t *data) {
-  if (type == 0) {
-    OPL_ADPCM_writeRAM(opl->adpcm, start, length, data);
-  } else {
-    OPL_ADPCM_writeROM(opl->adpcm, start, length, data); 
+  if (opl->adpcm != NULL) {
+    if (type == 0) {
+      OPL_ADPCM_writeRAM(opl->adpcm, start, length, data);
+    } else {
+      OPL_ADPCM_writeROM(opl->adpcm, start, length, data);
+    }
   }
 }
