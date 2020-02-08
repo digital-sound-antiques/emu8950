@@ -997,7 +997,7 @@ OPL *OPL_new(uint32_t clk, uint32_t rate) {
   if (opl == NULL)
     return NULL;
 
-  opl->adpcm = OPL_ADPCM_new(clk, rate);
+  opl->adpcm = OPL_ADPCM_new(clk, clk / 72);
   opl->clk = clk;
   opl->rate = rate;
   opl->mask = 0;
