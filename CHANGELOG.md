@@ -1,3 +1,7 @@
+# v1.0.1 (2020 02-09)
+- Remove deferred rhythm mode switching.
+- Improve white noise emulation.
+
 # v1.0.0 (2020-02-08)
 - Rewrite FM engine based on emu2413 v1.3.0.
   - Improve emulation quality.
