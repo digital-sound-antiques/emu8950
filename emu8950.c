@@ -180,9 +180,6 @@ static int32_t rks_table[8 * 2][2];
 #define SINC_RESO 256
 #define SINC_AMP_BITS 12
 
-/* fast conversion: 3-point average filter is used instead of sinc(x) table. rough and fast.*/
-#define USE_FAST_RATE_CONV 0
-
 // double hamming(double x) { return 0.54 - 0.46 * cos(2 * PI * x); }
 static double blackman(double x) { return 0.42 - 0.5 * cos(2 * _PI_ * x) + 0.08 * cos(4 * _PI_ * x); }
 static double sinc(double x) { return (x == 0.0 ? 1.0 : sin(_PI_ * x) / (_PI_ * x)); }
@@ -629,11 +626,14 @@ static void update_ampm(OPL *opl) {
   opl->lfo_am = am_table[(opl->am_phase >> 6) % sizeof(am_table)] >> (opl->am_mode ? 0 : 2);
 }
 
-static void update_noise(OPL *opl) {
-  if (opl->noise_seed & 1)
-    opl->noise_seed ^= 0x8003020;
-  opl->noise_seed >>= 1;
-  opl->noise = opl->noise_seed & 1;
+static void update_noise(OPL *opl, int cycle) {
+  int i;
+  for (i = 0; i < cycle; i++) {
+    if (opl->noise & 1) {
+      opl->noise ^= 0x800200;
+    }
+    opl->noise >>= 1;
+  }
 }
 
 static void update_short_noise(OPL *opl) {
@@ -807,9 +807,9 @@ static INLINE int16_t calc_slot_snare(OPL *opl) {
   uint32_t phase;
 
   if (BIT(opl->slot[SLOT_HH].pg_out, PG_BITS - 2))
-    phase = opl->noise ? _PD(0x300) : _PD(0x200);
+    phase = (opl->noise & 1) ? _PD(0x300) : _PD(0x200);
   else
-    phase = opl->noise ? _PD(0x0) : _PD(0x100);
+    phase = (opl->noise & 1) ? _PD(0x0) : _PD(0x100);
 
   return to_linear(slot->wave_table[phase], slot, 0);
 }
@@ -828,9 +828,9 @@ static INLINE int16_t calc_slot_hat(OPL *opl) {
   uint32_t phase;
 
   if (opl->short_noise)
-    phase = opl->noise ? _PD(0x2d0) : _PD(0x234);
+    phase = (opl->noise & 1) ? _PD(0x2d0) : _PD(0x234);
   else
-    phase = opl->noise ? _PD(0x34) : _PD(0xd0);
+    phase = (opl->noise & 1) ? _PD(0x34) : _PD(0xd0);
 
   return to_linear(slot->wave_table[phase], slot, 0);
 }
@@ -850,7 +850,6 @@ static void update_output(OPL *opl) {
   int i;
 
   update_ampm(opl);
-  update_noise(opl);
   update_short_noise(opl);
   update_slots(opl);
 
@@ -873,6 +872,7 @@ static void update_output(OPL *opl) {
       out[9] = _RO(calc_fm(opl, 6));
     }
   }
+  update_noise(opl, 14);
 
   /* CH8 */
   if (!opl->rhythm_mode) {
@@ -887,6 +887,7 @@ static void update_output(OPL *opl) {
       out[11] = _RO(calc_slot_snare(opl));
     }
   }
+  update_noise(opl, 2);
 
   /* CH9 */
   if (!opl->rhythm_mode) {
@@ -901,6 +902,7 @@ static void update_output(OPL *opl) {
       out[13] = _RO(calc_slot_cym(opl));
     }
   }
+  update_noise(opl, 2);
 
   /* ADPCM */
   if (opl->adpcm != NULL && !(opl->mask & OPL_MASK_ADPCM)) {
@@ -1028,7 +1030,7 @@ void OPL_reset(OPL *opl) {
   opl->pm_phase = 0;
   opl->am_phase = 0;
 
-  opl->noise_seed = 0xffff;
+  opl->noise = 1;
   opl->mask = 0;
 
   opl->rhythm_mode = 0;

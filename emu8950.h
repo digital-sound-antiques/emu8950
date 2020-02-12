@@ -109,8 +109,7 @@ typedef struct __OPL {
   int32_t am_dphase;
   uint8_t lfo_am;
 
-  uint32_t noise_seed;
-  uint8_t noise;
+  uint32_t noise;
   uint8_t short_noise;
 
   OPL_SLOT slot[18];
