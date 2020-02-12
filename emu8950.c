@@ -591,7 +591,6 @@ static INLINE void set_block(OPL *opl, int ch, int blk) {
 
 static INLINE void update_rhythm_mode(OPL *opl) {
   const uint8_t new_rhythm_mode = (opl->reg[0xbd] >> 5) & 1;
-  const uint32_t slot_key_status = opl->slot_key_status;
 
   if (opl->rhythm_mode != new_rhythm_mode) {
     if (new_rhythm_mode) {
