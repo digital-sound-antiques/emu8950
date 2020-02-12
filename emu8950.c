@@ -1,5 +1,5 @@
 /**
- * emu8950 v1.0.0
+ * emu8950 v1.0.1
  * https://github.com/digital-sound-antiques/emu8950
  * Copyright (C) 2001-2020 Mitsutaka Okazaki
  */
@@ -596,66 +596,23 @@ static INLINE void update_rhythm_mode(OPL *opl) {
   const uint8_t new_rhythm_mode = (opl->reg[0xbd] >> 5) & 1;
   const uint32_t slot_key_status = opl->slot_key_status;
 
-  if (opl->in_rhythm[6]) {
-    if (!(BIT(slot_key_status, SLOT_BD2) | new_rhythm_mode)) {
-      opl->in_rhythm[6] = 0;
-      opl->slot[SLOT_BD1].eg_state = RELEASE;
-      opl->slot[SLOT_BD1].eg_out = EG_MUTE;
-      opl->slot[SLOT_BD2].eg_state = RELEASE;
-      opl->slot[SLOT_BD2].eg_out = EG_MUTE;
-    }
-  } else if (new_rhythm_mode) {
-    opl->in_rhythm[6] = 1;
-    opl->slot[SLOT_BD1].eg_state = RELEASE;
-    opl->slot[SLOT_BD1].eg_out = EG_MUTE;
-    opl->slot[SLOT_BD2].eg_state = RELEASE;
-    opl->slot[SLOT_BD2].eg_out = EG_MUTE;
-  }
-
-  if (opl->in_rhythm[7]) {
-    if (!((BIT(slot_key_status, SLOT_HH) && BIT(slot_key_status, SLOT_SD)) | new_rhythm_mode)) {
-      opl->in_rhythm[7] = 0;
+  if (opl->rhythm_mode != new_rhythm_mode) {
+    if (new_rhythm_mode) {
+      opl->slot[SLOT_HH].type = 3;
+      opl->slot[SLOT_HH].pg_keep = 1;
+      opl->slot[SLOT_SD].type = 3;
+      opl->slot[SLOT_TOM].type = 3;
+      opl->slot[SLOT_CYM].type = 3;
+      opl->slot[SLOT_CYM].pg_keep = 1;
+    } else {
       opl->slot[SLOT_HH].type = 0;
       opl->slot[SLOT_HH].pg_keep = 0;
-      opl->slot[SLOT_HH].eg_state = RELEASE;
-      opl->slot[SLOT_HH].eg_out = EG_MUTE;
       opl->slot[SLOT_SD].type = 1;
-      opl->slot[SLOT_SD].eg_state = RELEASE;
-      opl->slot[SLOT_SD].eg_out = EG_MUTE;
-    }
-  } else if (new_rhythm_mode) {
-    opl->in_rhythm[7] = 1;
-    opl->slot[SLOT_HH].type = 3;
-    opl->slot[SLOT_HH].pg_keep = 1;
-    opl->slot[SLOT_HH].eg_state = RELEASE;
-    opl->slot[SLOT_HH].eg_out = EG_MUTE;
-    opl->slot[SLOT_SD].type = 3;
-    opl->slot[SLOT_SD].eg_state = RELEASE;
-    opl->slot[SLOT_SD].eg_out = EG_MUTE;
-  }
-
-  if (opl->in_rhythm[8]) {
-    if (!((BIT(slot_key_status, SLOT_CYM) && BIT(slot_key_status, SLOT_TOM)) | new_rhythm_mode)) {
-      opl->in_rhythm[8] = 0;
       opl->slot[SLOT_TOM].type = 0;
-      opl->slot[SLOT_TOM].eg_state = RELEASE;
-      opl->slot[SLOT_TOM].eg_out = EG_MUTE;
       opl->slot[SLOT_CYM].type = 1;
       opl->slot[SLOT_CYM].pg_keep = 0;
-      opl->slot[SLOT_CYM].eg_state = RELEASE;
-      opl->slot[SLOT_CYM].eg_out = EG_MUTE;
     }
-  } else if (new_rhythm_mode) {
-    opl->in_rhythm[8] = 1;
-    opl->slot[SLOT_TOM].type = 3;
-    opl->slot[SLOT_TOM].eg_state = RELEASE;
-    opl->slot[SLOT_TOM].eg_out = EG_MUTE;
-    opl->slot[SLOT_CYM].type = 3;
-    opl->slot[SLOT_CYM].pg_keep = 1;
-    opl->slot[SLOT_CYM].eg_state = RELEASE;
-    opl->slot[SLOT_CYM].eg_out = EG_MUTE;
   }
-
   opl->rhythm_mode = new_rhythm_mode;
 }
 
@@ -907,7 +864,7 @@ static void update_output(OPL *opl) {
   }
 
   /* CH7 */
-  if (!opl->in_rhythm[6]) {
+  if (!opl->rhythm_mode) {
     if (!(opl->mask & OPL_MASK_CH(6))) {
       out[6] = _MO(calc_fm(opl, 6));
     }
@@ -918,7 +875,7 @@ static void update_output(OPL *opl) {
   }
 
   /* CH8 */
-  if (!opl->in_rhythm[7]) {
+  if (!opl->rhythm_mode) {
     if (!(opl->mask & OPL_MASK_CH(7))) {
       out[7] = _MO(calc_fm(opl, 7));
     }
@@ -932,7 +889,7 @@ static void update_output(OPL *opl) {
   }
 
   /* CH9 */
-  if (!opl->in_rhythm[8]) {
+  if (!opl->rhythm_mode) {
     if (!(opl->mask & OPL_MASK_CH(8))) {
       out[8] = _MO(calc_fm(opl, 8));
     }
@@ -1085,7 +1042,6 @@ void OPL_reset(OPL *opl) {
   }
 
   for (i = 0; i < 9; i++) {
-    opl->in_rhythm[i] = 0;
     opl->ch_alg[i] = 0;
   }
 
@@ -1257,8 +1213,6 @@ void OPL_writeReg(OPL *opl, uint32_t reg, uint8_t data) {
     set_fnumber(opl, c, ((data & 3) << 8) + opl->reg[reg - 0x10]);
     set_block(opl, c, (data >> 2) & 7);
     update_key_status(opl);
-    /* update rhythm mode here because key-off of rhythm instrument is deferred until key-on bit is down. */
-    update_rhythm_mode(opl);
 
   } else if (0xc0 <= reg && reg < 0xc9) {
 

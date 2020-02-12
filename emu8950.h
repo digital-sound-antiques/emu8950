@@ -99,7 +99,6 @@ typedef struct __OPL {
   uint8_t test_flag;
   uint32_t slot_key_status;
   uint8_t rhythm_mode;
-  uint8_t in_rhythm[9];
 
   uint32_t eg_counter;
 
