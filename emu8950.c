@@ -1,5 +1,5 @@
 /**
- * emu8950 v1.0.1
+ * emu8950 v1.1.0-beta
  * https://github.com/digital-sound-antiques/emu8950
  * Copyright (C) 2001-2020 Mitsutaka Okazaki
  */
@@ -527,6 +527,10 @@ static INLINE void update_key_status(OPL *opl) {
   uint32_t updated_status;
   int ch;
 
+  if (opl->csm_mode && opl->csm_key_count) {
+    new_slot_key_status = 0x3ffff;
+  }
+
   for (ch = 0; ch < 9; ch++)
     if (opl->reg[0xB0 + ch] & 0x20)
       new_slot_key_status |= 3 << (ch * 2);
@@ -844,10 +848,61 @@ static INLINE int16_t calc_fm(OPL *opl, int ch) {
   return calc_slot_car(opl, ch, calc_slot_mod(opl, ch));
 }
 
+static void latch_timer1(OPL *opl) {
+  opl->timer1_counter = opl->reg[0x02] << 2;
+}
+
+static void latch_timer2(OPL *opl) {
+  opl->timer2_counter = opl->reg[0x03] << 4;
+}
+
+static void csm_key_on(OPL *opl) {
+  opl->csm_key_count = 1;
+  update_key_status(opl);
+}
+
+static void csm_key_off(OPL *opl) {
+  opl->csm_key_count = 0;
+  update_key_status(opl);
+}
+
+static void update_timer(OPL *opl) {
+  if (opl->csm_mode && 0 < opl->csm_key_count) {
+    csm_key_off(opl);
+  }
+
+  if (opl->reg[0x04] & 0x01) {
+    opl->timer1_counter++;
+    if (opl->timer1_counter >> 10) {
+      opl->status |= 0x40; // timer1 overflow
+      if (opl->csm_mode) {
+        csm_key_on(opl);
+      }
+      if (opl->timer1_func) {
+        opl->timer1_func(opl->timer1_user_data);
+      }
+      latch_timer1(opl);
+    }
+  }
+
+  if (opl->reg[0x04] & 0x02) {
+    opl->timer2_counter++;
+    if (opl->timer2_counter >> 12) {
+      opl->status |= 0x20; // timer2 overflow
+      if (opl->timer2_func) {
+        opl->timer2_func(opl->timer2_user_data);
+      }
+      latch_timer2(opl);
+    }
+  }
+
+}
+
 static void update_output(OPL *opl) {
   int16_t *out;
   int i;
 
+  update_timer(opl);
   update_ampm(opl);
   update_short_noise(opl);
   update_slots(opl);
@@ -962,6 +1017,10 @@ OPL *OPL_new(uint32_t clk, uint32_t rate) {
   opl->conv = NULL;
   opl->mix_out[0] = 0;
   opl->mix_out[1] = 0;
+  opl->timer1_func = NULL;
+  opl->timer1_user_data = NULL;
+  opl->timer2_func = NULL;
+  opl->timer2_user_data = NULL;
 
   OPL_reset(opl);
 
@@ -1005,7 +1064,7 @@ static void reset_rate_conversion_params(OPL *opl) {
 void refresh_adpcm_object(OPL *opl) {
   if (opl->chip_type == TYPE_Y8950) {
     if (opl->adpcm == NULL) {
-      opl->adpcm = OPL_ADPCM_new(opl->clk, opl->clk / 72);
+      opl->adpcm = OPL_ADPCM_new(opl->clk);
     }
   } else {
     if (opl->adpcm != NULL) {
@@ -1025,6 +1084,13 @@ void OPL_reset(OPL *opl) {
     return;
 
   opl->adr = 0;
+
+  opl->csm_mode = 0;
+  opl->csm_key_count = 0;
+
+  opl->status = 0;
+  opl->timer1_counter = 0;
+  opl->timer2_counter = 0;
 
   opl->pm_phase = 0;
   opl->am_phase = 0;
@@ -1047,8 +1113,9 @@ void OPL_reset(OPL *opl) {
   }
 
   for (i = 0; i < 0x100; i++) {
-    OPL_writeReg(opl, i, 0);
+    opl->reg[i] = 0;
   }
+  opl->reg[0x04] = 0x18; // MASK_EOS | MASK_BUF_RDY
 
   opl->pm_dphase = PM_DP_WIDTH / (1024 * 8);
 
@@ -1152,13 +1219,36 @@ void OPL_writeReg(OPL *opl, uint32_t reg, uint8_t data) {
 
   reg = reg & 0xff;
 
+  if ((reg == 0x04) && (data & 0x80)) {
+    // IRQ RESET
+    opl->status = 0;
+    opl->reg[0x04] &= 0x7f;
+    if (opl->adpcm) {
+      OPL_ADPCM_resetStatus(opl->adpcm);
+    }
+    return;
+  }
+
   opl->reg[reg] = data;
 
   if (reg == 0x01) {
 
     opl->test_flag = data;
 
+  } else if (reg == 0x04) {
+
+    if (data & 0x01) {
+      latch_timer1(opl);
+    }
+    if (data & 0x02) {
+      latch_timer2(opl);
+    }
+
   } else if (0x07 <= reg && reg <= 0x12) {
+
+    if (reg == 0x08) {
+      opl->csm_mode = data >> 7;
+    }
 
     if (opl->adpcm != NULL && opl->chip_type == TYPE_Y8950) {
       OPL_ADPCM_writeReg(opl->adpcm, reg, data);
@@ -1242,10 +1332,18 @@ void OPL_writeReg(OPL *opl, uint32_t reg, uint8_t data) {
 uint8_t OPL_readIO(OPL *opl) { return opl->reg[opl->adr]; }
 
 uint8_t OPL_status(OPL *opl) {
+  uint8_t status = opl->status;
+
   if (opl->adpcm) {
-    return OPL_ADPCM_status(opl->adpcm);
+    status |= OPL_ADPCM_status(opl->adpcm);
   }
-  return 0;
+
+  status &= ~(opl->reg[0x04] & 0x78); // IRQ MASK
+
+  if (status & 0x78) {
+    return status | 0x80; // IRQ=1
+  }
+  return status & 0x7f; // IRQ=0
 }
 
 void OPL_writeADPCMData(OPL *opl, uint8_t type, uint32_t start, uint32_t length, const uint8_t *data) {

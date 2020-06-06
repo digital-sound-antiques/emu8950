@@ -91,6 +91,9 @@ typedef struct __OPL {
 
   uint32_t adr;
 
+  uint8_t csm_mode;
+  uint8_t csm_key_count;
+
   uint32_t inp_step;
   uint32_t out_step;
   uint32_t out_time;
@@ -129,6 +132,15 @@ typedef struct __OPL {
   int16_t mix_out[2];
 
   OPL_RateConv *conv;
+
+  uint32_t timer1_counter; //  80us counter
+  uint32_t timer2_counter; // 320us counter
+  void *timer1_user_data;
+  void *timer2_user_data;
+  void (*timer1_func)(void *user);
+  void (*timer2_func)(void *user);
+  uint8_t status;
+
 } OPL;
 
 OPL *OPL_new(uint32_t clk, uint32_t rate);
@@ -205,6 +217,18 @@ uint32_t OPL_setMask(OPL *, uint32_t mask);
 uint32_t OPL_toggleMask(OPL *, uint32_t mask);
 
 uint8_t OPL_readIO(OPL *opl);
+
+/**
+ * Read OPL status register
+ * @returns
+ * 76543210
+ * |||||  +- D0: PCM/BSY
+ * ||||+---- D3: BUF/RDY
+ * |||+----- D4: EOS
+ * ||+------ D5: TIMER2
+ * |+------- D6: TIMER1
+ * +-------- D7: IRQ
+ */
 uint8_t OPL_status(OPL *opl);
 
 void OPL_writeADPCMData(OPL *opl, uint8_t type, uint32_t start, uint32_t length, const uint8_t *data);
