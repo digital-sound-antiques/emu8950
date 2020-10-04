@@ -1,5 +1,5 @@
 /**
- * emu8950 v1.1.0-beta
+ * emu8950 v1.1.0
  * https://github.com/digital-sound-antiques/emu8950
  * Copyright (C) 2001-2020 Mitsutaka Okazaki
  */
@@ -155,7 +155,7 @@ static double kl_table[16] = {dB2(0.000),  dB2(9.000),  dB2(12.000), dB2(13.875)
                               dB2(19.875), dB2(20.250), dB2(20.625), dB2(21.000)};
 
 static uint32_t tll_table[8 * 16][1 << TL_BITS][4];
-static int32_t rks_table[8 * 2][2];
+static int32_t rks_table[2][32][2];
 
 #define min(i, j) (((i) < (j)) ? (i) : (j))
 #define max(i, j) (((i) > (j)) ? (i) : (j))
@@ -339,12 +339,17 @@ static void makeTllTable(void) {
 }
 
 static void makeRksTable(void) {
-  int fnum9, block;
-  for (fnum9 = 0; fnum9 < 2; fnum9++)
-    for (block = 0; block < 8; block++) {
-      rks_table[(block << 1) | fnum9][1] = (block << 1) + fnum9;
-      rks_table[(block << 1) | fnum9][0] = block >> 1;
-    }
+  int fnum8, fnum9, blk;
+  int blk_fnum98;
+  for (fnum8 = 0; fnum8 < 2; fnum8++)
+    for (fnum9 = 0; fnum9 < 2; fnum9++)
+      for (blk = 0; blk < 8; blk++) {
+        blk_fnum98 = (blk << 2) | (fnum9 << 1) | fnum8;
+        rks_table[0][blk_fnum98][1] = (blk << 1) + fnum9;
+        rks_table[0][blk_fnum98][0] = blk >> 1;
+        rks_table[1][blk_fnum98][1] = (blk << 1) + (fnum9 & fnum8);
+        rks_table[1][blk_fnum98][0] = blk >> 1;
+      }
 }
 
 static uint8_t table_initialized = 0;
@@ -433,7 +438,7 @@ enum SLOT_UPDATE_FLAG {
 
 static INLINE void request_update(OPL_SLOT *slot, int flag) { slot->update_requests |= flag; }
 
-static void commit_slot_update(OPL_SLOT *slot) {
+static void commit_slot_update(OPL_SLOT *slot, uint8_t notesel) {
 
   if (slot->update_requests & UPDATE_WS) {
     slot->wave_table = wave_table_map[slot->patch->WS & 3];
@@ -448,7 +453,7 @@ static void commit_slot_update(OPL_SLOT *slot) {
   }
 
   if (slot->update_requests & UPDATE_RKS) {
-    slot->rks = rks_table[slot->blk_fnum >> 9][slot->patch->KR];
+    slot->rks = rks_table[notesel][slot->blk_fnum >> 8][slot->patch->KR];
   }
 
   if (slot->update_requests & (UPDATE_RKS | UPDATE_EG)) {
@@ -748,7 +753,7 @@ static void update_slots(OPL *opl) {
   for (i = 0; i < 18; i++) {
     OPL_SLOT *slot = &opl->slot[i];
     if (slot->update_requests) {
-      commit_slot_update(slot);
+      commit_slot_update(slot, opl->notesel);
     }
     calc_envelope(slot, opl->eg_counter, opl->test_flag & 1);
     calc_phase(slot, opl->pm_phase, opl->pm_mode, opl->test_flag & 4);
@@ -1087,6 +1092,7 @@ void OPL_reset(OPL *opl) {
 
   opl->csm_mode = 0;
   opl->csm_key_count = 0;
+  opl->notesel = 0;
 
   opl->status = 0;
   opl->timer1_counter = 0;
@@ -1247,7 +1253,8 @@ void OPL_writeReg(OPL *opl, uint32_t reg, uint8_t data) {
   } else if (0x07 <= reg && reg <= 0x12) {
 
     if (reg == 0x08) {
-      opl->csm_mode = data >> 7;
+      opl->csm_mode = (data >> 7) & 1;
+      opl->notesel = (data >> 6) & 1;
     }
 
     if (opl->adpcm != NULL && opl->chip_type == TYPE_Y8950) {
@@ -1343,7 +1350,7 @@ uint8_t OPL_status(OPL *opl) {
   if (status & 0x78) {
     return status | 0x80; // IRQ=1
   }
-  return status & 0x7f; // IRQ=0
+  return status & 0x7f; // IRQ = 0
 }
 
 void OPL_writeADPCMData(OPL *opl, uint8_t type, uint32_t start, uint32_t length, const uint8_t *data) {
