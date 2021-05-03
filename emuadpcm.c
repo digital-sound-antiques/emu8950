@@ -241,7 +241,6 @@ void OPL_ADPCM_writeReg(OPL_ADPCM *_this, uint32_t adr, uint32_t data) {
         //_this->status |= STATUS_EOS; /* Bug? */
       }
     }
-    _this->status |= STATUS_BUF_RDY;
     break;
 
   case 0x10: /* DELTA-N (L) */
@@ -261,17 +260,14 @@ void OPL_ADPCM_writeReg(OPL_ADPCM *_this, uint32_t adr, uint32_t data) {
 
 /**
  * 76543210
- * |  ||  +- D0: PCM-BSY
- * |  |+---- D3: BUF-RDY
- * |  +----- D4: EOS
- * +-------- D7: IRQ
+ *    ||  +- D0: PCM-BSY
+ *    |+---- D3: BUF-RDY
+ *    +----- D4: EOS
+ * IRQ bit (D7) is not implemented on this module.
  */
 uint8_t OPL_ADPCM_status(OPL_ADPCM *_this) { 
-  if (_this->status & 0x18) {
-    return _this->status | 0x80; // IRQ=1
-  } else {
-    return _this->status & 0x7f; // IRQ=0
-  }
+  // BUF_RDY is always 1 - it is not accurate but practically okay.
+  return _this->status | STATUS_BUF_RDY;
 }
 
 void OPL_ADPCM_resetStatus(OPL_ADPCM *_this) {
