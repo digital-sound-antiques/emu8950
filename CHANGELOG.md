@@ -1,3 +1,9 @@
+# v1.1.1 (2021 05-04)
+- Fix the problem where BUF_RDY status bit stays 0 after status register is reset.
+
+# v1.1.0 (2020 10-04)
+- Support notesel, timer and CSM mode.
+
 # v1.0.1 (2020 02-12)
 - Remove deferred rhythm mode switching.
 - Improve white noise emulation.
