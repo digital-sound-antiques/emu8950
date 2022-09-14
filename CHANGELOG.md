@@ -1,3 +1,6 @@
+# v1.1.2 (2022 09-14)
+- Update minimum cmake version to 3.0
+
 # v1.1.1 (2021 05-04)
 - Fix the problem where BUF_RDY status bit stays 0 after status register is reset.
 
