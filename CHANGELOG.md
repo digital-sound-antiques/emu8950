@@ -1,3 +1,6 @@
+# v1.1.3 (2024 06-15)
+- Fixed the issue where key-on could fail when the attack envelope rate is around 14. (Issue[#3](https://github.com/digital-sound-antiques/emu8950/issues/3)).
+
 # v1.1.2 (2022 09-14)
 - Update minimum cmake version to 3.0
 

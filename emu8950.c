@@ -1,5 +1,5 @@
 /**
- * emu8950 v1.1.2
+ * emu8950 v1.1.3
  * https://github.com/digital-sound-antiques/emu8950
  * Copyright (C) 2001-2020 Mitsutaka Okazaki
  */
@@ -42,9 +42,6 @@ enum __OPL_TYPE { TYPE_Y8950 = 0, TYPE_YM3526, TYPE_YM3812, TYPE_MAX };
 /* dynamic range of sustine level */
 #define SL_STEP 3.0
 #define SL_BITS 4
-
-/* damper speed before key-on. key-scale affects. */
-#define DAMPER_RATE 12
 
 #define TL2EG(tl) ((tl) << 2)
 
@@ -149,7 +146,7 @@ static uint8_t eg_step_tables_fast[4][8] = {
 static uint32_t ml_table[16] = {1,     1 * 2, 2 * 2,  3 * 2,  4 * 2,  5 * 2,  6 * 2,  7 * 2,
                                 8 * 2, 9 * 2, 10 * 2, 10 * 2, 12 * 2, 12 * 2, 15 * 2, 15 * 2};
 
-#define dB2(x) ((x)*2)
+#define dB2(x) ((x) * 2)
 static double kl_table[16] = {dB2(0.000),  dB2(9.000),  dB2(12.000), dB2(13.875), dB2(15.000), dB2(16.125),
                               dB2(16.875), dB2(17.625), dB2(18.000), dB2(18.750), dB2(19.125), dB2(19.500),
                               dB2(19.875), dB2(20.250), dB2(20.625), dB2(21.000)};
@@ -397,8 +394,6 @@ static char *_debug_eg_state_name(OPL_SLOT *slot) {
     return "sustain";
   case RELEASE:
     return "release";
-  case DAMP:
-    return "damp";
   default:
     return "unknown";
   }
@@ -507,6 +502,7 @@ static void reset_slot(OPL_SLOT *slot, int number) {
 
 static INLINE void slotOn(OPL *opl, int i) {
   OPL_SLOT *slot = &opl->slot[i];
+  slot->rks = rks_table[opl->notesel][slot->blk_fnum >> 8][slot->patch->KR];
   if (min(15, slot->patch->AR + (slot->rks >> 2)) == 15) {
     slot->eg_state = DECAY;
     slot->eg_out = 0;
@@ -853,13 +849,9 @@ static INLINE int16_t calc_fm(OPL *opl, int ch) {
   return calc_slot_car(opl, ch, calc_slot_mod(opl, ch));
 }
 
-static void latch_timer1(OPL *opl) {
-  opl->timer1_counter = opl->reg[0x02] << 2;
-}
+static void latch_timer1(OPL *opl) { opl->timer1_counter = opl->reg[0x02] << 2; }
 
-static void latch_timer2(OPL *opl) {
-  opl->timer2_counter = opl->reg[0x03] << 4;
-}
+static void latch_timer2(OPL *opl) { opl->timer2_counter = opl->reg[0x03] << 4; }
 
 static void csm_key_on(OPL *opl) {
   opl->csm_key_count = 1;
@@ -900,7 +892,6 @@ static void update_timer(OPL *opl) {
       latch_timer2(opl);
     }
   }
-
 }
 
 static void update_output(OPL *opl) {
@@ -1269,7 +1260,7 @@ void OPL_writeReg(OPL *opl, uint32_t reg, uint8_t data) {
       opl->slot[s].patch->PM = (data >> 6) & 1;
       opl->slot[s].patch->EG = (data >> 5) & 1;
       opl->slot[s].patch->KR = (data >> 4) & 1;
-      opl->slot[s].patch->ML = (data)&15;
+      opl->slot[s].patch->ML = (data) & 15;
       request_update(&(opl->slot[s]), UPDATE_ALL);
     }
 
@@ -1278,7 +1269,7 @@ void OPL_writeReg(OPL *opl, uint32_t reg, uint8_t data) {
     s = stbl[reg - 0x40];
     if (s >= 0) {
       opl->slot[s].patch->KL = (data >> 6) & 3;
-      opl->slot[s].patch->TL = (data)&63;
+      opl->slot[s].patch->TL = (data) & 63;
       request_update(&(opl->slot[s]), UPDATE_ALL);
     }
 
@@ -1287,7 +1278,7 @@ void OPL_writeReg(OPL *opl, uint32_t reg, uint8_t data) {
     s = stbl[reg - 0x60];
     if (s >= 0) {
       opl->slot[s].patch->AR = (data >> 4) & 15;
-      opl->slot[s].patch->DR = (data)&15;
+      opl->slot[s].patch->DR = (data) & 15;
       request_update(&(opl->slot[s]), UPDATE_EG);
     }
 
@@ -1296,7 +1287,7 @@ void OPL_writeReg(OPL *opl, uint32_t reg, uint8_t data) {
     s = stbl[reg - 0x80];
     if (s >= 0) {
       opl->slot[s].patch->SL = (data >> 4) & 15;
-      opl->slot[s].patch->RR = (data)&15;
+      opl->slot[s].patch->RR = (data) & 15;
       request_update(&(opl->slot[s]), UPDATE_EG);
     }
 
