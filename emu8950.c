@@ -1,5 +1,5 @@
 /**
- * emu8950 v1.1.3
+ * emu8950 v1.1.4
  * https://github.com/digital-sound-antiques/emu8950
  * Copyright (C) 2001-2020 Mitsutaka Okazaki
  */
@@ -1002,7 +1002,7 @@ OPL *OPL_new(uint32_t clk, uint32_t rate) {
     initializeTables();
   }
 
-  opl = (OPL *)calloc(sizeof(OPL), 1);
+  opl = (OPL *)calloc(1, sizeof(OPL));
   if (opl == NULL)
     return NULL;
 
