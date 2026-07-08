@@ -1353,3 +1353,42 @@ void OPL_writeADPCMData(OPL *opl, uint8_t type, uint32_t start, uint32_t length,
     }
   }
 }
+
+int OPL_save_state(OPL *opl, uint8_t *out) {
+  int n = (int)sizeof(OPL);
+  if (out)
+    memcpy(out, opl, sizeof(OPL));
+  /* The ADPCM engine (Y8950) is a separately malloc'd object, so its dynamic
+   * state lives outside sizeof(OPL); append it. Its RAM/ROM sample buffers are
+   * not included (loaded once, constant). */
+  if (opl->adpcm != NULL)
+    n += OPL_ADPCM_save_state(opl->adpcm, out ? out + n : (uint8_t *)0);
+  return n;
+}
+
+void OPL_load_state(OPL *opl, const uint8_t *in, int size) {
+  /* Preserve THIS instance's own allocations / host bindings across the struct
+   * copy, so the blob carries no source-instance pointers. This makes the state
+   * position-independent: it can be restored into a DIFFERENT OPL instance
+   * (cross-instance copy), not only the one that produced it. */
+  OPL_ADPCM *adpcm = opl->adpcm;
+  OPL_RateConv *conv = opl->conv;
+  void *t1u = opl->timer1_user_data, *t2u = opl->timer2_user_data;
+  void (*t1f)(void *) = opl->timer1_func;
+  void (*t2f)(void *) = opl->timer2_func;
+  int i;
+  memcpy(opl, in, sizeof(OPL));
+  opl->adpcm = adpcm;
+  opl->conv = conv;
+  if (opl->conv) OPL_RateConv_reset(opl->conv); /* reset SRC: its ring is stale after a load */
+  opl->timer1_user_data = t1u;
+  opl->timer2_user_data = t2u;
+  opl->timer1_func = t1f;
+  opl->timer2_func = t2f;
+  /* each slot's `patch` aliases its own embedded __patch; wave_table points to a
+   * static table (stable address across instances) so it needs no relink. */
+  for (i = 0; i < 18; i++)
+    opl->slot[i].patch = &(opl->slot[i].__patch);
+  if (opl->adpcm != NULL)
+    OPL_ADPCM_load_state(opl->adpcm, in + sizeof(OPL), size - (int)sizeof(OPL));
+}
