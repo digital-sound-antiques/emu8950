@@ -1,16 +1,20 @@
-# v1.1.3 (2024 06-15)
+# v1.2.0 (2026-07-22)
+- Fixed reset function to fully clear runtime state.
+- Added save/load state functionality.
+
+# v1.1.3 (2024-06-15)
 - Fixed the issue where key-on could fail when the attack envelope rate is around 14. (Issue[#3](https://github.com/digital-sound-antiques/emu8950/issues/3)).
 
-# v1.1.2 (2022 09-14)
+# v1.1.2 (2022-09-14)
 - Update minimum cmake version to 3.0
 
-# v1.1.1 (2021 05-04)
+# v1.1.1 (2021-05-04)
 - Fix the problem where BUF_RDY status bit stays 0 after status register is reset.
 
-# v1.1.0 (2020 10-04)
+# v1.1.0 (2020-10-04)
 - Support notesel, timer and CSM mode.
 
-# v1.0.1 (2020 02-12)
+# v1.0.1 (2020-02-12)
 - Remove deferred rhythm mode switching.
 - Improve white noise emulation.
 

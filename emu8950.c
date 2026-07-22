@@ -1,5 +1,5 @@
 /**
- * emu8950 v1.1.4
+ * emu8950 v1.2.0
  * https://github.com/digital-sound-antiques/emu8950
  * Copyright (C) 2001-2020 Mitsutaka Okazaki
  */
@@ -497,7 +497,10 @@ static void reset_slot(OPL_SLOT *slot, int number) {
   slot->blk = 0;
   slot->fnum = 0;
   slot->pg_out = 0;
+  slot->eg_rate_h = 0;
+  slot->eg_rate_l = 0;
   slot->eg_out = EG_MUTE;
+  slot->update_requests = 0;
 }
 
 static INLINE void slotOn(OPL *opl, int i) {
@@ -1093,11 +1096,18 @@ void OPL_reset(OPL *opl) {
   opl->am_phase = 0;
 
   opl->noise = 1;
+  opl->short_noise = 0;
   opl->mask = 0;
+
+  opl->test_flag = 0;
+  opl->lfo_am = 0;
 
   opl->rhythm_mode = 0;
   opl->slot_key_status = 0;
   opl->eg_counter = 0;
+
+  opl->mix_out[0] = 0;
+  opl->mix_out[1] = 0;
 
   reset_rate_conversion_params(opl);
 
