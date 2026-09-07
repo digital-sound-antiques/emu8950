@@ -151,7 +151,7 @@ static double kl_table[16] = {dB2(0.000),  dB2(9.000),  dB2(12.000), dB2(13.875)
                               dB2(16.875), dB2(17.625), dB2(18.000), dB2(18.750), dB2(19.125), dB2(19.500),
                               dB2(19.875), dB2(20.250), dB2(20.625), dB2(21.000)};
 
-static uint32_t tll_table[8 * 16][1 << TL_BITS][4];
+static uint16_t tll_table[8 * 16][4];
 static int32_t rks_table[2][32][2];
 
 #define min(i, j) (((i) < (j)) ? (i) : (j))
@@ -313,22 +313,20 @@ static void makeSinTable(void) {
 static void makeTllTable(void) {
 
   int32_t tmp;
-  int32_t fnum, block, TL, KL, kx;
+  int32_t fnum, block, KL, kx;
 
   for (fnum = 0; fnum < 16; fnum++) {
     for (block = 0; block < 8; block++) {
-      for (TL = 0; TL < 64; TL++) {
-        for (KL = 0; KL < 4; KL++) {
-          kx = ((KL & 1) << 1) | ((KL >> 1) & 1);
-          if (KL == 0) {
-            tll_table[(block << 4) | fnum][TL][KL] = TL2EG(TL);
-          } else {
-            tmp = (int32_t)(kl_table[fnum] - dB2(3.000) * (7 - block));
-            if (tmp <= 0)
-              tll_table[(block << 4) | fnum][TL][KL] = TL2EG(TL);
-            else
-              tll_table[(block << 4) | fnum][TL][KL] = (uint32_t)((tmp >> (3 - kx)) / EG_STEP) + TL2EG(TL);
-          }
+      for (KL = 0; KL < 4; KL++) {
+        kx = ((KL & 1) << 1) | ((KL >> 1) & 1);
+        if (KL == 0) {
+          tll_table[(block << 4) | fnum][KL] = 0;
+        } else {
+          tmp = (int32_t)(kl_table[fnum] - dB2(3.000) * (7 - block));
+          if (tmp <= 0)
+            tll_table[(block << 4) | fnum][KL] = 0;
+          else
+            tll_table[(block << 4) | fnum][KL] = (uint16_t)((tmp >> (3 - kx)) / EG_STEP);
         }
       }
     }
@@ -440,11 +438,7 @@ static void commit_slot_update(OPL_SLOT *slot, uint8_t notesel) {
   }
 
   if (slot->update_requests & UPDATE_TLL) {
-    if ((slot->type & 1) == 0) {
-      slot->tll = tll_table[slot->blk_fnum >> 6][slot->patch->TL][slot->patch->KL];
-    } else {
-      slot->tll = tll_table[slot->blk_fnum >> 6][slot->patch->TL][slot->patch->KL];
-    }
+    slot->tll = tll_table[slot->blk_fnum >> 6][slot->patch->KL] + TL2EG(slot->patch->TL);
   }
 
   if (slot->update_requests & UPDATE_RKS) {
