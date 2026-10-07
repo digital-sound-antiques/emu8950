@@ -1054,7 +1054,7 @@ static void reset_rate_conversion_params(OPL *opl) {
   }
 }
 
-void refresh_adpcm_object(OPL *opl) {
+static void refresh_adpcm_object(OPL *opl) {
   if (opl->chip_type == TYPE_Y8950) {
     if (opl->adpcm == NULL) {
       opl->adpcm = OPL_ADPCM_new(opl->clk);

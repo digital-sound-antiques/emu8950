@@ -39,8 +39,6 @@
 #define RAM_SIZE (256 * 1024)
 #define ROM_SIZE (256 * 1024)
 
-FILE *fp;
-
 OPL_ADPCM *OPL_ADPCM_new(uint32_t clk) {
   OPL_ADPCM *_this;
 
@@ -190,7 +188,7 @@ int16_t OPL_ADPCM_calc(OPL_ADPCM *_this) {
 }
 
 /* mode= 0:RAM256k 1:ROM 2:RAM64k */
-uint32_t decode_start_address(uint8_t mode, uint8_t l, uint8_t h) {
+static uint32_t decode_start_address(uint8_t mode, uint8_t l, uint8_t h) {
   switch (mode) {
   case 0:
     return ((h << 8) | l) << 2;
@@ -199,7 +197,7 @@ uint32_t decode_start_address(uint8_t mode, uint8_t l, uint8_t h) {
   }
 }
 
-uint32_t decode_stop_address(uint8_t mode, uint8_t l, uint8_t h) {
+static uint32_t decode_stop_address(uint8_t mode, uint8_t l, uint8_t h) {
   switch (mode) {
   case 0:
     return (((h << 8) | l) << 2) | 3;
