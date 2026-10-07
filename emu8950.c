@@ -1,5 +1,5 @@
 /**
- * emu8950 v1.2.0
+ * emu8950 v1.2.2
  * https://github.com/digital-sound-antiques/emu8950
  * Copyright (C) 2001-2020 Mitsutaka Okazaki
  */

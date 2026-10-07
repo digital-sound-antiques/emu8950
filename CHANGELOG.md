@@ -1,3 +1,11 @@
+# v1.2.2 (2026-10-08)
+BugFix: thanks @madscient
+- Fixed `OPL_calcStereo()` resampling L and R at different positions when the rate converter is active. (Issue[#5](https://github.com/digital-sound-antiques/emu8950/issues/5))
+- Fixed ADPCM RAM/ROM buffers leaking when the chip type is switched away from Y8950. (Issue[#6](https://github.com/digital-sound-antiques/emu8950/issues/6))
+- Fixed ADPCM keeping the last decoded value as a DC offset after playback has stopped. (Issue[#7](https://github.com/digital-sound-antiques/emu8950/issues/7))
+- Fixed ADPCM playback not stopping when the START bit is cleared. (Issue[#8](https://github.com/digital-sound-antiques/emu8950/issues/8))
+- Made internal functions static and removed the `FILE` type reference. (Issue[#9](https://github.com/digital-sound-antiques/emu8950/issues/9))
+
 # v1.2.1 (2026-09-07)
 - Reduced the table footprint from 138KB to 7KB.
 
