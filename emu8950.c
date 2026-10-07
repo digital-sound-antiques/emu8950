@@ -1061,7 +1061,7 @@ void refresh_adpcm_object(OPL *opl) {
     }
   } else {
     if (opl->adpcm != NULL) {
-      free(opl->adpcm);
+      OPL_ADPCM_delete(opl->adpcm);
       opl->adpcm = NULL;
     }
   }
