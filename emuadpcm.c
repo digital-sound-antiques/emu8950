@@ -183,6 +183,9 @@ int16_t OPL_ADPCM_calc(OPL_ADPCM *_this) {
   if (_this->reg[0x07] & R07_SP_OFF)
     return 0;
 
+  if (!_this->play_start)
+    return 0;
+
   return calc(_this);
 }
 
