@@ -223,6 +223,8 @@ void OPL_ADPCM_writeReg(OPL_ADPCM *_this, uint32_t adr, uint32_t data) {
       _this->output[1] = 0;
       _this->diff = DDEF;
       _this->status |= STATUS_PCM_BSY; 
+    } else {
+      _this->play_start = 0;
     }
     _this->reg[0x07] = data;
     break;
