@@ -1,5 +1,5 @@
 /**
- * emu8950 v1.1.4
+ * emu8950 v1.2.0
  * https://github.com/digital-sound-antiques/emu8950
  * Copyright (C) 2001-2020 Mitsutaka Okazaki
  */
@@ -151,7 +151,7 @@ static double kl_table[16] = {dB2(0.000),  dB2(9.000),  dB2(12.000), dB2(13.875)
                               dB2(16.875), dB2(17.625), dB2(18.000), dB2(18.750), dB2(19.125), dB2(19.500),
                               dB2(19.875), dB2(20.250), dB2(20.625), dB2(21.000)};
 
-static uint32_t tll_table[8 * 16][1 << TL_BITS][4];
+static uint16_t tll_table[8 * 16][4];
 static int32_t rks_table[2][32][2];
 
 #define min(i, j) (((i) < (j)) ? (i) : (j))
@@ -313,22 +313,20 @@ static void makeSinTable(void) {
 static void makeTllTable(void) {
 
   int32_t tmp;
-  int32_t fnum, block, TL, KL, kx;
+  int32_t fnum, block, KL, kx;
 
   for (fnum = 0; fnum < 16; fnum++) {
     for (block = 0; block < 8; block++) {
-      for (TL = 0; TL < 64; TL++) {
-        for (KL = 0; KL < 4; KL++) {
-          kx = ((KL & 1) << 1) | ((KL >> 1) & 1);
-          if (KL == 0) {
-            tll_table[(block << 4) | fnum][TL][KL] = TL2EG(TL);
-          } else {
-            tmp = (int32_t)(kl_table[fnum] - dB2(3.000) * (7 - block));
-            if (tmp <= 0)
-              tll_table[(block << 4) | fnum][TL][KL] = TL2EG(TL);
-            else
-              tll_table[(block << 4) | fnum][TL][KL] = (uint32_t)((tmp >> (3 - kx)) / EG_STEP) + TL2EG(TL);
-          }
+      for (KL = 0; KL < 4; KL++) {
+        kx = ((KL & 1) << 1) | ((KL >> 1) & 1);
+        if (KL == 0) {
+          tll_table[(block << 4) | fnum][KL] = 0;
+        } else {
+          tmp = (int32_t)(kl_table[fnum] - dB2(3.000) * (7 - block));
+          if (tmp <= 0)
+            tll_table[(block << 4) | fnum][KL] = 0;
+          else
+            tll_table[(block << 4) | fnum][KL] = (uint16_t)((tmp >> (3 - kx)) / EG_STEP);
         }
       }
     }
@@ -440,11 +438,7 @@ static void commit_slot_update(OPL_SLOT *slot, uint8_t notesel) {
   }
 
   if (slot->update_requests & UPDATE_TLL) {
-    if ((slot->type & 1) == 0) {
-      slot->tll = tll_table[slot->blk_fnum >> 6][slot->patch->TL][slot->patch->KL];
-    } else {
-      slot->tll = tll_table[slot->blk_fnum >> 6][slot->patch->TL][slot->patch->KL];
-    }
+    slot->tll = tll_table[slot->blk_fnum >> 6][slot->patch->KL] + TL2EG(slot->patch->TL);
   }
 
   if (slot->update_requests & UPDATE_RKS) {
@@ -497,7 +491,10 @@ static void reset_slot(OPL_SLOT *slot, int number) {
   slot->blk = 0;
   slot->fnum = 0;
   slot->pg_out = 0;
+  slot->eg_rate_h = 0;
+  slot->eg_rate_l = 0;
   slot->eg_out = EG_MUTE;
+  slot->update_requests = 0;
 }
 
 static INLINE void slotOn(OPL *opl, int i) {
@@ -1064,7 +1061,7 @@ void refresh_adpcm_object(OPL *opl) {
     }
   } else {
     if (opl->adpcm != NULL) {
-      free(opl->adpcm);
+      OPL_ADPCM_delete(opl->adpcm);
       opl->adpcm = NULL;
     }
   }
@@ -1093,11 +1090,18 @@ void OPL_reset(OPL *opl) {
   opl->am_phase = 0;
 
   opl->noise = 1;
+  opl->short_noise = 0;
   opl->mask = 0;
+
+  opl->test_flag = 0;
+  opl->lfo_am = 0;
 
   opl->rhythm_mode = 0;
   opl->slot_key_status = 0;
   opl->eg_counter = 0;
+
+  opl->mix_out[0] = 0;
+  opl->mix_out[1] = 0;
 
   reset_rate_conversion_params(opl);
 
@@ -1352,4 +1356,43 @@ void OPL_writeADPCMData(OPL *opl, uint8_t type, uint32_t start, uint32_t length,
       OPL_ADPCM_writeROM(opl->adpcm, start, length, data);
     }
   }
+}
+
+int OPL_save_state(OPL *opl, uint8_t *out) {
+  int n = (int)sizeof(OPL);
+  if (out)
+    memcpy(out, opl, sizeof(OPL));
+  /* The ADPCM engine (Y8950) is a separately malloc'd object, so its dynamic
+   * state lives outside sizeof(OPL); append it. Its RAM/ROM sample buffers are
+   * not included (loaded once, constant). */
+  if (opl->adpcm != NULL)
+    n += OPL_ADPCM_save_state(opl->adpcm, out ? out + n : (uint8_t *)0);
+  return n;
+}
+
+void OPL_load_state(OPL *opl, const uint8_t *in, int size) {
+  /* Preserve THIS instance's own allocations / host bindings across the struct
+   * copy, so the blob carries no source-instance pointers. This makes the state
+   * position-independent: it can be restored into a DIFFERENT OPL instance
+   * (cross-instance copy), not only the one that produced it. */
+  OPL_ADPCM *adpcm = opl->adpcm;
+  OPL_RateConv *conv = opl->conv;
+  void *t1u = opl->timer1_user_data, *t2u = opl->timer2_user_data;
+  void (*t1f)(void *) = opl->timer1_func;
+  void (*t2f)(void *) = opl->timer2_func;
+  int i;
+  memcpy(opl, in, sizeof(OPL));
+  opl->adpcm = adpcm;
+  opl->conv = conv;
+  if (opl->conv) OPL_RateConv_reset(opl->conv); /* reset SRC: its ring is stale after a load */
+  opl->timer1_user_data = t1u;
+  opl->timer2_user_data = t2u;
+  opl->timer1_func = t1f;
+  opl->timer2_func = t2f;
+  /* each slot's `patch` aliases its own embedded __patch; wave_table points to a
+   * static table (stable address across instances) so it needs no relink. */
+  for (i = 0; i < 18; i++)
+    opl->slot[i].patch = &(opl->slot[i].__patch);
+  if (opl->adpcm != NULL)
+    OPL_ADPCM_load_state(opl->adpcm, in + sizeof(OPL), size - (int)sizeof(OPL));
 }

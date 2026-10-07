@@ -234,6 +234,14 @@ uint8_t OPL_status(OPL *opl);
 
 void OPL_writeADPCMData(OPL *opl, uint8_t type, uint32_t start, uint32_t length, const uint8_t *data);
 
+/* Save/restore the emulator state. Serialises the OPL core plus the Y8950 ADPCM
+ * engine state (a separately malloc'd object). The 256K ADPCM RAM/ROM buffers
+ * are NOT included — they are treated as constant sample data loaded once. A
+ * load keeps this instance's live RAM/ROM (and conv) allocations. out=NULL
+ * returns the required size. */
+int OPL_save_state(OPL *opl, uint8_t *out);
+void OPL_load_state(OPL *opl, const uint8_t *in, int size);
+
 /* for compatibility */
 #define OPL_set_rate OPL_setRate
 #define OPL_set_quality OPL_setQuality

@@ -97,6 +97,28 @@ void OPL_ADPCM_reset(OPL_ADPCM *_this) {
   _this->output[0] = _this->output[1] = 0;
 }
 
+int OPL_ADPCM_save_state(OPL_ADPCM *_this, uint8_t *out) {
+  /* Engine state only; the 256K RAM/ROM sample buffers are loaded once and not
+   * part of the snapshot (see OPL_ADPCM_load_state, which keeps this instance's). */
+  if (out)
+    memcpy(out, _this, sizeof(OPL_ADPCM));
+  return (int)sizeof(OPL_ADPCM);
+}
+
+void OPL_ADPCM_load_state(OPL_ADPCM *_this, const uint8_t *in, int size) {
+  if (size < (int)sizeof(OPL_ADPCM))
+    return;
+  /* keep this instance's own RAM/ROM buffers across the copy */
+  uint8_t *ram = _this->memory[0];
+  uint8_t *rom = _this->memory[1];
+  memcpy(_this, in, sizeof(OPL_ADPCM));
+  _this->memory[0] = ram;
+  _this->memory[1] = rom;
+  /* `wave` is the RAM/ROM base selected by reg 0x08 — re-point at this instance's
+   * buffers so a snapshot restored into a different instance is valid. */
+  _this->wave = (_this->reg[0x08] & R08_ROM) ? _this->memory[1] : _this->memory[0];
+}
+
 #define DELTA_ADDR_MAX (1 << 16)
 #define DELTA_ADDR_MASK (DELTA_ADDR_MAX - 1)
 

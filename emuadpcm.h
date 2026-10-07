@@ -36,4 +36,8 @@ uint8_t OPL_ADPCM_status(OPL_ADPCM *);
 void OPL_ADPCM_resetStatus(OPL_ADPCM *);
 void OPL_ADPCM_writeRAM(OPL_ADPCM *, uint32_t start, uint32_t length, const uint8_t *data);
 void OPL_ADPCM_writeROM(OPL_ADPCM *, uint32_t start, uint32_t length, const uint8_t *data);
+/* Save/restore state (engine only; the RAM/ROM sample buffers are kept, not
+ * copied, so the state can be restored into a different instance). out=NULL -> size. */
+int OPL_ADPCM_save_state(OPL_ADPCM *, uint8_t *out);
+void OPL_ADPCM_load_state(OPL_ADPCM *, const uint8_t *in, int size);
 #endif
