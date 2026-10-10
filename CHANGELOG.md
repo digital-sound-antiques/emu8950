@@ -1,4 +1,4 @@
-# Unreleased
+# v1.2.3 (2026-10-11)
 - Removed float/double arithmetic from the per-sample path (`OPL_calc()`, `OPL_calcStereo()` and the rate converter) for CPUs without an FPU. The rate converter phase is now derived from the integer output timing, so it no longer drifts and stays aligned after `OPL_load_state()`. (Same as emu2413 Issue[#15](https://github.com/digital-sound-antiques/emu2413/issues/15))
 - Fixed the internal rate being truncated to an integer (`clk / 72`). Setting the rate to 49716 at 3.58MHz now disables the rate converter as documented.
 - Faster rate converter: the sinc table is laid out per phase and the input buffer is a ring buffer. The phase is now rounded instead of truncated, which removes a constant 1/512-sample delay.
