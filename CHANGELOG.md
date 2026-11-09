@@ -1,3 +1,7 @@
+# v1.2.4 (2026-11-09)
+BugFix: thanks @madscient
+- Fixed PCM BSY (status bit 0) to follow the START bit of $07, as on a real Y8950. It no longer drops at the end of a sample and is now cleared when START is cleared. (Issue[#16](https://github.com/digital-sound-antiques/emu8950/issues/16))
+
 # v1.2.3 (2026-10-11)
 - Removed float/double arithmetic from the per-sample path (`OPL_calc()`, `OPL_calcStereo()` and the rate converter) for CPUs without an FPU. The rate converter phase is now derived from the integer output timing, so it no longer drifts and stays aligned after `OPL_load_state()`. (Same as emu2413 Issue[#15](https://github.com/digital-sound-antiques/emu2413/issues/15))
 - Fixed the internal rate being truncated to an integer (`clk / 72`). Setting the rate to 49716 at 3.58MHz now disables the rate converter as documented.
